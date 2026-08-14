@@ -36,10 +36,15 @@ body.micropatches-instant-ui *::after {
 
 /* Allowlist: things that must keep genuinely animating, not freeze on a
    stale frame — spinners, indeterminate progress bars, and CodeMirror's
-   blinking cursor (whose rate is driven by the animation duration itself). */
+   blinking cursor (whose rate is driven by the animation duration itself).
+   Covers both the element itself and its ::before/::after, since several of
+   these (search/settings "is-loading" progress bars, the PDF find-bar's
+   spinning icon) animate a pseudo-element rather than the element with the
+   matching class. */
 body.micropatches-instant-ui
   :is(
     .loader-spinner svg,
+    .loader-cube,
     .sk-cube,
     .cm-fat-cursor-mark,
     .cm-animate-fat-cursor,
@@ -48,8 +53,12 @@ body.micropatches-instant-ui
     [class*="spinner"],
     [class*="loading"],
     .cm-cursorLayer .cm-cursor,
-    .node-insert-event
-  ) {
+    .node-insert-event,
+    .hmd-file-uploading,
+    .mod-pending
+  ),
+body.micropatches-instant-ui :is([class*="spinner"], [class*="loading"], .mod-pending)::before,
+body.micropatches-instant-ui :is([class*="spinner"], [class*="loading"], .mod-pending)::after {
   animation-duration: revert !important;
   animation-delay: revert !important;
 }
