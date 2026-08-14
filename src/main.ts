@@ -2,15 +2,20 @@ import { type App, Plugin, PluginSettingTab, Setting } from "obsidian";
 import type { Patch, PatchHandle } from "./patch";
 import { cursorRepeatThrottle } from "./patches/cursor-repeat-throttle";
 import { hideTrafficLights } from "./patches/hide-traffic-lights";
+import { instantUi } from "./patches/instant-ui";
 
-const PATCHES: Patch[] = [cursorRepeatThrottle, hideTrafficLights];
+const PATCHES: Patch[] = [cursorRepeatThrottle, hideTrafficLights, instantUi];
+
+// Bugfixes default on; anything that changes how the UI *feels* (not just
+// fixing something broken) defaults off so it's an explicit opt-in.
+const DEFAULT_OFF = new Set<string>([instantUi.id]);
 
 interface MicropatchesSettings {
   enabled: Record<string, boolean>;
 }
 
 function defaultSettings(): MicropatchesSettings {
-  return { enabled: Object.fromEntries(PATCHES.map((patch) => [patch.id, true])) };
+  return { enabled: Object.fromEntries(PATCHES.map((patch) => [patch.id, !DEFAULT_OFF.has(patch.id)])) };
 }
 
 export default class MicropatchesPlugin extends Plugin {

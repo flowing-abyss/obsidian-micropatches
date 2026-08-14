@@ -1,4 +1,4 @@
-import { Platform, debounce, type Plugin } from "obsidian";
+import { Notice, Platform, debounce, type Plugin } from "obsidian";
 import type { Patch, PatchHandle } from "../patch";
 
 interface BrowserWindowLike {
@@ -13,6 +13,10 @@ interface ElectronModuleLike {
 
 interface WindowWithRequire extends Window {
   require?: (id: string) => unknown;
+}
+
+interface WindowState {
+  onFocus: () => void;
 }
 
 declare function require(id: string): unknown;
@@ -37,7 +41,8 @@ export const hideTrafficLights: Patch = {
       return { cleanup: (): void => {} };
     }
 
-    const windows = new Set<Window>();
+    const windows = new Map<Window, WindowState>();
+    let warnedRemoteUnavailable = false;
 
     const getBrowserWindow = (win: Window): BrowserWindowLike | undefined => {
       if (win === window) {
@@ -49,11 +54,27 @@ export const hideTrafficLights: Patch = {
       return electron?.remote?.getCurrentWindow();
     };
 
-    const hideFor = (win: Window): void => {
+    // The class removes the reserved tab-bar space; it must only be applied
+    // when we actually managed to move the buttons, otherwise the buttons
+    // stay put while the space collapses and they end up overlapping the
+    // first tab.
+    const hideFor = (win: Window): boolean => {
       try {
-        getBrowserWindow(win)?.setWindowButtonPosition({ x: -100, y: -100 });
+        const bw = getBrowserWindow(win);
+        if (!bw) {
+          if (!warnedRemoteUnavailable) {
+            warnedRemoteUnavailable = true;
+            new Notice(
+              "Micropatches: couldn't reach electron's window controls (hide-traffic-lights disabled itself for this session).",
+            );
+          }
+          return false;
+        }
+        bw.setWindowButtonPosition({ x: -100, y: -100 });
+        return true;
       } catch (error) {
         console.error("Micropatches (hide-traffic-lights): failed to hide", error);
+        return false;
       }
     };
 
@@ -68,32 +89,46 @@ export const hideTrafficLights: Patch = {
     const applyState = (win: Window): void => {
       if (!windows.has(win)) return;
 
-      if (isEnabled()) {
+      if (isEnabled() && hideFor(win)) {
         win.document.body.classList.add(BODY_CLASS);
-        hideFor(win);
       } else {
         win.document.body.classList.remove(BODY_CLASS);
-        restoreFor(win);
+        if (!isEnabled()) restoreFor(win);
       }
     };
 
     const applyAll = (): void => {
-      for (const win of windows) applyState(win);
+      for (const win of windows.keys()) applyState(win);
     };
     const applyAllDebounced = debounce(applyAll, 50, true);
 
     const setupWindow = (win: Window): void => {
       if (windows.has(win)) return;
-      windows.add(win);
+
+      const onFocus = (): void => applyState(win);
+      windows.set(win, { onFocus });
+      win.addEventListener("focus", onFocus);
+
       applyState(win);
-      plugin.registerDomEvent(win, "focus", () => applyState(win));
     };
 
+    // Remove from the map first: if the window's document is already torn
+    // down (win.document/body can legitimately be null on a late
+    // "window-close"), the DOM cleanup below is best-effort only and must
+    // not stop us from forgetting this window or throw out of the
+    // workspace event handler (which would abort other listeners).
     const teardownWindow = (win: Window): void => {
-      if (!windows.has(win)) return;
-      win.document.body.classList.remove(BODY_CLASS);
-      restoreFor(win);
+      const state = windows.get(win);
+      if (!state) return;
       windows.delete(win);
+
+      try {
+        win.removeEventListener("focus", state.onFocus);
+        win.document?.body?.classList.remove(BODY_CLASS);
+      } catch (error) {
+        console.error("Micropatches (hide-traffic-lights): teardown cleanup failed", error);
+      }
+      restoreFor(win);
     };
 
     setupWindow(window);
@@ -112,7 +147,7 @@ export const hideTrafficLights: Patch = {
 
     return {
       cleanup: (): void => {
-        for (const win of Array.from(windows)) teardownWindow(win);
+        for (const win of Array.from(windows.keys())) teardownWindow(win);
       },
       onToggle: (): void => applyAll(),
     };

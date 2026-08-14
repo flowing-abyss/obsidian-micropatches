@@ -7,3 +7,36 @@ body.micropatches-hide-traffic-lights.mod-macos:not(.is-fullscreen)
   > .workspace-tab-header-container {
   padding-left: var(--size-4-2, 8px) !important;
 }
+
+/* instant-ui: near-zero instead of `none` so transitionend/animationend
+   still fire and animation-fill-mode still applies — cleanup logic that
+   depends on those (Notice, sidebar reveal, folder collapse, etc.) keeps
+   working, it just happens instantly. */
+body.micropatches-instant-ui *,
+body.micropatches-instant-ui *::before,
+body.micropatches-instant-ui *::after {
+  animation-duration: 0.001ms !important;
+  animation-delay: 0s !important;
+  transition-duration: 0.001ms !important;
+  transition-delay: 0s !important;
+}
+
+/* Allowlist: things that must keep genuinely animating, not freeze on a
+   stale frame — spinners, indeterminate progress bars, and CodeMirror's
+   blinking cursor (whose rate is driven by the animation duration itself). */
+body.micropatches-instant-ui
+  :is(
+    .loader-spinner svg,
+    .sk-cube,
+    .cm-fat-cursor-mark,
+    .cm-animate-fat-cursor,
+    .progress-bar-line,
+    .progress-bar-subline,
+    [class*="spinner"],
+    [class*="loading"],
+    .cm-cursorLayer .cm-cursor,
+    .node-insert-event
+  ) {
+  animation-duration: revert !important;
+  animation-delay: revert !important;
+}
