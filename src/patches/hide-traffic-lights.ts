@@ -1,5 +1,5 @@
 import { Notice, Platform, debounce, type Plugin } from "obsidian";
-import type { Patch, PatchHandle } from "../patch";
+import type { Patch, PatchContext, PatchHandle } from "../patch";
 
 interface BrowserWindowLike {
   setWindowButtonPosition(position: { x: number; y: number } | null): void;
@@ -36,7 +36,7 @@ export const hideTrafficLights: Patch = {
   description:
     "Moves the native macOS traffic-light window controls off-screen and removes the reserved tab-bar space, for every open window.",
 
-  register(plugin: Plugin, isEnabled: () => boolean): PatchHandle {
+  register(plugin: Plugin, ctx: PatchContext): PatchHandle {
     if (!Platform.isMacOS) {
       return { cleanup: (): void => {} };
     }
@@ -89,11 +89,11 @@ export const hideTrafficLights: Patch = {
     const applyState = (win: Window): void => {
       if (!windows.has(win)) return;
 
-      if (isEnabled() && hideFor(win)) {
+      if (ctx.isEnabled() && hideFor(win)) {
         win.document.body.classList.add(BODY_CLASS);
       } else {
         win.document.body.classList.remove(BODY_CLASS);
-        if (!isEnabled()) restoreFor(win);
+        if (!ctx.isEnabled()) restoreFor(win);
       }
     };
 

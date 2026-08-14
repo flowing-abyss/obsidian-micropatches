@@ -1,21 +1,28 @@
 import { type App, Plugin, PluginSettingTab, Setting } from "obsidian";
-import type { Patch, PatchHandle } from "./patch";
+import type { Patch, PatchContext, PatchHandle } from "./patch";
+import { basesAutoSearch } from "./patches/bases-auto-search";
 import { cursorRepeatThrottle } from "./patches/cursor-repeat-throttle";
 import { hideTrafficLights } from "./patches/hide-traffic-lights";
 import { instantUi } from "./patches/instant-ui";
+import { scrollOffset } from "./patches/scroll-offset";
 
-const PATCHES: Patch[] = [cursorRepeatThrottle, hideTrafficLights, instantUi];
+const PATCHES: Patch[] = [cursorRepeatThrottle, scrollOffset, hideTrafficLights, basesAutoSearch, instantUi];
 
-// Bugfixes default on; anything that changes how the UI *feels* (not just
-// fixing something broken) defaults off so it's an explicit opt-in.
+// Bugfixes/replacements default on; anything that changes how the UI *feels*
+// (not just fixing or replacing something) defaults off so it's an explicit
+// opt-in.
 const DEFAULT_OFF = new Set<string>([instantUi.id]);
 
 interface MicropatchesSettings {
   enabled: Record<string, boolean>;
+  config: Record<string, Record<string, unknown>>;
 }
 
 function defaultSettings(): MicropatchesSettings {
-  return { enabled: Object.fromEntries(PATCHES.map((patch) => [patch.id, !DEFAULT_OFF.has(patch.id)])) };
+  return {
+    enabled: Object.fromEntries(PATCHES.map((patch) => [patch.id, !DEFAULT_OFF.has(patch.id)])),
+    config: {},
+  };
 }
 
 export default class MicropatchesPlugin extends Plugin {
@@ -26,7 +33,7 @@ export default class MicropatchesPlugin extends Plugin {
     await this.loadSettings();
 
     for (const patch of PATCHES) {
-      const handle = patch.register(this, () => this.settings.enabled[patch.id] ?? true);
+      const handle = patch.register(this, this.contextFor(patch.id));
       this.handles.set(patch.id, handle);
     }
 
@@ -40,7 +47,11 @@ export default class MicropatchesPlugin extends Plugin {
 
   async loadSettings(): Promise<void> {
     const data = (await this.loadData()) as Partial<MicropatchesSettings> | null;
-    this.settings = { enabled: { ...defaultSettings().enabled, ...(data?.enabled ?? {}) } };
+    const defaults = defaultSettings();
+    this.settings = {
+      enabled: { ...defaults.enabled, ...(data?.enabled ?? {}) },
+      config: { ...defaults.config, ...(data?.config ?? {}) },
+    };
   }
 
   async saveSettings(): Promise<void> {
@@ -51,6 +62,21 @@ export default class MicropatchesPlugin extends Plugin {
     this.settings.enabled[id] = enabled;
     await this.saveSettings();
     this.handles.get(id)?.onToggle?.(enabled);
+  }
+
+  contextFor(id: string): PatchContext {
+    return {
+      isEnabled: () => this.settings.enabled[id] ?? true,
+      getConfig: <T>(key: string, defaultValue: T): T => {
+        const value = this.settings.config[id]?.[key];
+        return value === undefined ? defaultValue : (value as T);
+      },
+      setConfig: async <T>(key: string, value: T): Promise<void> => {
+        this.settings.config[id] ??= {};
+        this.settings.config[id][key] = value;
+        await this.saveSettings();
+      },
+    };
   }
 }
 
@@ -75,6 +101,8 @@ class MicropatchesSettingTab extends PluginSettingTab {
             await this.plugin.setPatchEnabled(patch.id, value);
           }),
         );
+
+      patch.renderSettings?.(containerEl, this.plugin.contextFor(patch.id));
     }
   }
 }

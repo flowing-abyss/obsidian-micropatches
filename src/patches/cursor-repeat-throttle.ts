@@ -1,7 +1,7 @@
 import { EditorSelection, Prec } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import type { Plugin } from "obsidian";
-import type { Patch, PatchHandle } from "../patch";
+import type { Patch, PatchContext, PatchHandle } from "../patch";
 
 type MoveType = "char" | "line";
 
@@ -78,7 +78,7 @@ export const cursorRepeatThrottle: Patch = {
   description:
     "Coalesces held-arrow-key auto-repeat into at most one CodeMirror update per animation frame, preventing the input queue from snowballing into multi-second freezes.",
 
-  register(plugin: Plugin, isEnabled: () => boolean): PatchHandle {
+  register(plugin: Plugin, ctx: PatchContext): PatchHandle {
     const pending = new Map<EditorView, PendingMove>();
     const scheduled = new Map<EditorView, { id: number; win: Window }>();
 
@@ -86,7 +86,7 @@ export const cursorRepeatThrottle: Patch = {
       const entry = pending.get(view);
       if (!entry) return;
       pending.delete(view);
-      if (!isEnabled()) return;
+      if (!ctx.isEnabled()) return;
       if (!view.dom.isConnected) return;
 
       try {
@@ -162,7 +162,7 @@ export const cursorRepeatThrottle: Patch = {
       Prec.highest(
         EditorView.domEventHandlers({
           keydown: (event, view) => {
-            if (!isEnabled()) return false;
+            if (!ctx.isEnabled()) return false;
             if (!event.repeat) return false;
             if (event.ctrlKey || event.metaKey || event.altKey) return false;
             if (event.isComposing) return false;

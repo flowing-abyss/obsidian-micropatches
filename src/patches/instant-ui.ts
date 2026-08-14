@@ -1,5 +1,5 @@
 import type { Plugin } from "obsidian";
-import type { Patch, PatchHandle } from "../patch";
+import type { Patch, PatchContext, PatchHandle } from "../patch";
 
 const BODY_CLASS = "micropatches-instant-ui";
 
@@ -20,12 +20,12 @@ export const instantUi: Patch = {
   description:
     "Collapses CSS transition/animation durations to near-zero across Obsidian's UI. Completion events and fill-mode still fire normally, so nothing gets stuck invisible — only spinners/progress bars/the blinking cursor keep actually animating.",
 
-  register(plugin: Plugin, isEnabled: () => boolean): PatchHandle {
+  register(plugin: Plugin, ctx: PatchContext): PatchHandle {
     const windows = new Set<Window>();
 
     const applyState = (win: Window): void => {
       if (!windows.has(win)) return;
-      win.document.body.classList.toggle(BODY_CLASS, isEnabled());
+      win.document.body.classList.toggle(BODY_CLASS, ctx.isEnabled());
     };
 
     const applyAll = (): void => {
