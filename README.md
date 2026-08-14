@@ -2,6 +2,8 @@
 
 [![Available in Obsidian](https://img.shields.io/badge/Available%20in%20Obsidian-7C3AED?logo=obsidian&logoColor=white&style=flat-square)](https://obsidian.md/plugins?id=micropatches)
 
+![Micropatches](assets/banner.png)
+
 A small Obsidian plugin with targeted fixes and quality of life tweaks.
 
 ## Patches
