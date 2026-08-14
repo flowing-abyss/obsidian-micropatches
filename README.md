@@ -8,7 +8,13 @@ Patches included
    Holding an arrow key fires a stream of OS auto-repeat keydown events. Each one normally runs a full CodeMirror dispatch cycle (dispatchTransactions -> updateSelection -> native Selection.collapse()). If that cycle costs more than the OS's repeat interval, events queue up faster than they drain and the backlog grows on itself — a few ms of lag can escalate into a multi-second freeze the longer the key is held.
    This coalesces auto-repeat events into at most one real CodeMirror update per animation frame, computed with CodeMirror's own moveByChar / moveVertically helpers so wrapped lines, unicode clusters etc. are still handled correctly. The first (non-repeat) keydown is always handled immediately and normally — this only changes behavior while a key is being held down.
 
+2. Hide traffic lights (macOS)
+   Obsidian on macOS reserves layout space in the tab bar for the native traffic-light window controls even when they're not wanted. This moves them off-screen via Electron's setWindowButtonPosition and removes the reserved space with a small stylesheet, for every open window (main window + popouts). macOS only — a no-op elsewhere.
+
+Each patch can be toggled independently in Settings -> Micropatches, without reloading the plugin.
+
 Installation / update
+
 1. Disable the plugin in Obsidian.
 2. Replace the folder:
    <your-vault>/.obsidian/plugins/micropatches/

@@ -1,0 +1,43 @@
+# vscode
+.vscode
+
+# Intellij
+*.iml
+.idea
+
+# npm / pnpm
+node_modules
+
+# Don't include the compiled main.js file in the repo.
+# It should be uploaded to GitHub releases instead.
+main.js
+
+# Exclude sourcemaps
+*.map
+
+# obsidian
+data.json
+
+# macOS
+.DS_Store
+
+# AI
+.a5c/
+.agent/
+.agents/
+.claude/
+.codegraph/
+.codex/
+.forge/
+.opencode/
+.pi-lens/
+.pi/
+.serena/
+.superpowers/
+.worktrees/
+.zed/
+
+/.mcp.json
+/AGENTS.md
+CLAUDE.md
+/opencode.json

@@ -1,0 +1,9 @@
+body.micropatches-hide-traffic-lights.mod-macos:not(.is-fullscreen) {
+  --frame-left-space: 0px !important;
+}
+
+body.micropatches-hide-traffic-lights.mod-macos:not(.is-fullscreen)
+  .workspace-tabs.mod-top-left-space
+  > .workspace-tab-header-container {
+  padding-left: var(--size-4-2, 8px) !important;
+}
