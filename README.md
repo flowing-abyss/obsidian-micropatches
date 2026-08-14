@@ -1,6 +1,6 @@
 # Micropatches
 
-A small Obsidian plugin that fixes specific core editor bugs and performance issues.
+A small Obsidian plugin with targeted fixes and quality of life tweaks.
 
 ## Install via BRAT
 

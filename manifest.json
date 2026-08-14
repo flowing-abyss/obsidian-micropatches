@@ -3,7 +3,7 @@
   "name": "Micropatches",
   "version": "1.0.0",
   "minAppVersion": "1.8.0",
-  "description": "Small, targeted patches for specific Obsidian bugs and performance issues.",
+  "description": "Small, targeted fixes and quality of life tweaks for Obsidian.",
   "author": "flowing-abyss",
   "authorUrl": "https://github.com/flowing-abyss",
   "fundingUrl": "https://boosty.to/flowing-abyss/donate",
