@@ -1,12 +1,8 @@
 # Micropatches
 
+[![Available in Obsidian](https://img.shields.io/badge/Available%20in%20Obsidian-7C3AED?logo=obsidian&logoColor=white&style=flat-square)](https://obsidian.md/plugins?id=micropatches)
+
 A small Obsidian plugin with targeted fixes and quality of life tweaks.
-
-## Install via BRAT
-
-1. Install the BRAT plugin from Community Plugins if you don't have it already.
-2. Open BRAT settings and add a beta plugin using this repo, flowing-abyss/obsidian-micropatches.
-3. Enable Micropatches in Community Plugins.
 
 ## Patches
 
