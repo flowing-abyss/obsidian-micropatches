@@ -1,32 +1,34 @@
 Micropatches
 
-A collection of small, targeted patches for specific Obsidian core-editor bugs and performance issues, and for replacing tiny unmaintained community plugins with the same behavior kept in one place. Each patch targets one measured problem; a couple take a small setting where that's the point.
+A small Obsidian plugin that fixes specific core editor bugs and performance issues, and replaces a few tiny unmaintained community plugins with the same behavior kept in one place.
 
-Patches included
+Install via BRAT
 
-1. Cursor repeat throttle
-   Holding an arrow key fires a stream of OS auto-repeat keydown events. Each one normally runs a full CodeMirror dispatch cycle (dispatchTransactions -> updateSelection -> native Selection.collapse()). If that cycle costs more than the OS's repeat interval, events queue up faster than they drain and the backlog grows on itself — a few ms of lag can escalate into a multi-second freeze the longer the key is held.
-   This coalesces auto-repeat events (plain or Shift-extend) into at most one real CodeMirror update per animation frame, computed with CodeMirror's own moveByChar / moveVertically helpers so wrapped lines, unicode clusters etc. are still handled correctly. The first (non-repeat) keydown is always handled immediately and normally, and the patch steps aside entirely for anything that gives arrow keys a different meaning: an open suggester popup, vim mode, or IME composition.
+1. Install the BRAT plugin from Community Plugins if you don't have it already.
+2. Open BRAT settings and add a beta plugin using this repo, flowing-abyss/obsidian-micropatches.
+3. Enable Micropatches in Community Plugins.
 
-2. Scroll offset
-   Replaces the third-party "Scroll Offset" plugin, keeping only its real mechanism (a clean CM6 ViewPlugin using `scrollMargins` + `requestMeasure`) and dropping a second, entirely dead code path it carried through Obsidian's legacy CodeMirror-5 compatibility layer. Keeps a minimum distance between the cursor and the top/bottom of the editor; suspended right after a mouse click so clicking doesn't yank the view, resumes on the next keypress. Configurable: percentage vs. fixed pixels, and the distance.
+Manual install
 
-3. Hide traffic lights (macOS)
-   Obsidian on macOS reserves layout space in the tab bar for the native traffic-light window controls even when they're not wanted. This moves them off-screen via Electron's setWindowButtonPosition and removes the reserved space with a small stylesheet, for every open window (main window + popouts). macOS only — a no-op elsewhere.
+1. Download manifest.json, main.js and styles.css from the latest release.
+2. Put them in your-vault/.obsidian/plugins/micropatches/
+3. Enable Micropatches in Community Plugins.
 
-4. Bases auto search
-   Replaces the third-party "Bases Auto Search" plugin. Automatically opens the search bar the first time a Bases view is shown.
+Patches
 
-5. Instant UI (skip animations) — off by default
-   Collapses CSS transition/animation durations to near-zero across Obsidian's UI instead of removing them outright, so `transitionend`/`animationend` still fire and `animation-fill-mode` still applies — Notice, sidebar reveals, folder collapse, and the several community plugins that depend on those events keep working, they just happen instantly. Spinners, progress bars, and CodeMirror's blinking cursor are allowlisted to keep actually animating. This changes how the UI feels, not just fixes something broken, so it's opt-in.
+Cursor repeat throttle
+Holding an arrow key could snowball into a multi second freeze. This coalesces held-key repeats into one CodeMirror update per animation frame instead of one per repeat event, and steps aside for suggester popups, vim mode and IME composition.
 
-Each patch can be toggled independently in Settings -> Micropatches, without reloading the plugin.
+Scroll offset
+Replaces the third party Scroll Offset plugin. Keeps a minimum distance between the cursor and the top or bottom edge of the editor. Percentage or fixed pixels, both configurable.
 
-Installation / update
+Hide traffic lights, macOS only
+Moves the native window buttons off screen and removes the reserved tab bar space, for every open window.
 
-1. Disable the plugin in Obsidian.
-2. Replace the folder:
-   <your-vault>/.obsidian/plugins/micropatches/
-   with the folder from this repo.
-3. Restart or reload Obsidian.
-4. Enable the plugin again.
+Bases auto search
+Replaces the third party Bases Auto Search plugin. Opens the search bar the first time a Bases view is shown.
+
+Instant UI, off by default
+Collapses animation and transition durations to near zero across the UI, while keeping completion events and fill mode intact so nothing gets stuck invisible. Spinners and other continuous indicators are exempted.
+
+Each patch can be switched on or off separately in Settings, no reload needed.
