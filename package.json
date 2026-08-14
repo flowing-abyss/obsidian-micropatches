@@ -1,7 +1,7 @@
 {
   "name": "micropatches",
   "version": "1.0.0",
-  "description": "A collection of small, targeted patches for specific Obsidian core-editor bugs and performance issues.",
+  "description": "Small, targeted patches for specific Obsidian bugs and performance issues.",
   "main": "main.js",
   "type": "module",
   "scripts": {
