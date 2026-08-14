@@ -93,16 +93,24 @@ class MicropatchesSettingTab extends PluginSettingTab {
     containerEl.empty();
 
     for (const patch of PATCHES) {
+      const enabled = this.plugin.settings.enabled[patch.id] ?? true;
+      let subContainer: HTMLElement | null = null;
+
       new Setting(containerEl)
         .setName(patch.name)
         .setDesc(patch.description)
         .addToggle((toggle) =>
-          toggle.setValue(this.plugin.settings.enabled[patch.id] ?? true).onChange(async (value) => {
+          toggle.setValue(enabled).onChange(async (value) => {
             await this.plugin.setPatchEnabled(patch.id, value);
+            subContainer?.classList.toggle("is-hidden", !value);
           }),
         );
 
-      patch.renderSettings?.(containerEl, this.plugin.contextFor(patch.id));
+      if (patch.renderSettings) {
+        subContainer = containerEl.createDiv({ cls: "micropatches-sub-settings" });
+        subContainer.classList.toggle("is-hidden", !enabled);
+        patch.renderSettings(subContainer, this.plugin.contextFor(patch.id));
+      }
     }
   }
 }

@@ -1,3 +1,16 @@
+/* Settings tab: sub-settings belonging to a specific patch's toggle, only
+   rendered while that patch is enabled — indented and left-bordered so
+   they read as belonging to the setting above them, not the next patch. */
+.micropatches-sub-settings {
+  margin-left: 2em;
+  padding-left: 1em;
+  border-left: 2px solid var(--background-modifier-border);
+}
+
+.micropatches-sub-settings.is-hidden {
+  display: none;
+}
+
 body.micropatches-hide-traffic-lights.mod-macos:not(.is-fullscreen) {
   --frame-left-space: 0px !important;
 }
