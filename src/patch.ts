@@ -1,4 +1,4 @@
-import type { Plugin } from "obsidian";
+import type { Plugin, SettingGroupItem } from "obsidian";
 
 export type Cleanup = () => void;
 
@@ -18,6 +18,11 @@ export interface Patch {
   name: string;
   description: string;
   register(plugin: Plugin, ctx: PatchContext): PatchHandle;
-  /** Optional extra settings UI, rendered right below the patch's on/off toggle. */
-  renderSettings?(containerEl: HTMLElement, ctx: PatchContext): void;
+  /**
+   * Optional extra settings, nested under this patch's enable toggle in the
+   * declarative settings tab. `key` builds a config key namespaced to this
+   * patch (e.g. key("offset") -> "scroll-offset.config.offset") for use in
+   * each item's `control.key`.
+   */
+  settingDefinitions?(ctx: PatchContext, key: (configKey: string) => string): SettingGroupItem[];
 }

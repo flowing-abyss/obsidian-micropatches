@@ -1,4 +1,4 @@
-import { type App, Plugin, PluginSettingTab, Setting } from "obsidian";
+import { type App, Plugin, PluginSettingTab, type SettingDefinitionItem, type SettingGroupItem } from "obsidian";
 import type { Patch, PatchContext, PatchHandle } from "./patch";
 import { basesAutoSearch } from "./patches/bases-auto-search";
 import { cursorRepeatThrottle } from "./patches/cursor-repeat-throttle";
@@ -80,6 +80,14 @@ export default class MicropatchesPlugin extends Plugin {
   }
 }
 
+// Setting keys are namespaced as "<patchId>.enabled" and
+// "<patchId>.config.<configKey>" so the tab's single flat getControlValue /
+// setControlValue can route each change back to the right patch.
+function parseKey(key: string): { patchId: string; kind: "enabled" | "config"; configKey: string } {
+  const [patchId = "", kind = "", ...rest] = key.split(".");
+  return { patchId, kind: kind === "config" ? "config" : "enabled", configKey: rest.join(".") };
+}
+
 class MicropatchesSettingTab extends PluginSettingTab {
   private readonly plugin: MicropatchesPlugin;
 
@@ -88,29 +96,38 @@ class MicropatchesSettingTab extends PluginSettingTab {
     this.plugin = plugin;
   }
 
-  override display(): void {
-    const { containerEl } = this;
-    containerEl.empty();
+  override getSettingDefinitions(): SettingDefinitionItem[] {
+    return PATCHES.map((patch): SettingDefinitionItem => {
+      const ctx = this.plugin.contextFor(patch.id);
+      const toggle: SettingGroupItem = {
+        name: patch.name,
+        desc: patch.description,
+        control: { type: "toggle", key: `${patch.id}.enabled`, defaultValue: !DEFAULT_OFF.has(patch.id) },
+      };
 
-    for (const patch of PATCHES) {
-      const enabled = this.plugin.settings.enabled[patch.id] ?? true;
-      let subContainer: HTMLElement | null = null;
+      const extra = patch.settingDefinitions?.(ctx, (configKey) => `${patch.id}.config.${configKey}`) ?? [];
+      if (extra.length === 0) return toggle;
 
-      new Setting(containerEl)
-        .setName(patch.name)
-        .setDesc(patch.description)
-        .addToggle((toggle) =>
-          toggle.setValue(enabled).onChange(async (value) => {
-            await this.plugin.setPatchEnabled(patch.id, value);
-            subContainer?.classList.toggle("is-hidden", !value);
-          }),
-        );
+      const items: SettingGroupItem[] = [
+        toggle,
+        ...extra.map((item): SettingGroupItem => ({ ...item, visible: () => ctx.isEnabled() })),
+      ];
+      return { type: "group", items };
+    });
+  }
 
-      if (patch.renderSettings) {
-        subContainer = containerEl.createDiv({ cls: "micropatches-sub-settings" });
-        subContainer.classList.toggle("is-hidden", !enabled);
-        patch.renderSettings(subContainer, this.plugin.contextFor(patch.id));
-      }
+  override getControlValue(key: string): unknown {
+    const { patchId, kind, configKey } = parseKey(key);
+    if (kind === "enabled") return this.plugin.settings.enabled[patchId];
+    return this.plugin.settings.config[patchId]?.[configKey];
+  }
+
+  override async setControlValue(key: string, value: unknown): Promise<void> {
+    const { patchId, kind, configKey } = parseKey(key);
+    if (kind === "enabled") {
+      await this.plugin.setPatchEnabled(patchId, Boolean(value));
+    } else {
+      await this.plugin.contextFor(patchId).setConfig(configKey, value);
     }
   }
 }

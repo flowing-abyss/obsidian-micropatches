@@ -1,30 +1,20 @@
-/* Settings tab: sub-settings belonging to a specific patch's toggle, only
-   rendered while that patch is enabled — indented and left-bordered so
-   they read as belonging to the setting above them, not the next patch. */
-.micropatches-sub-settings {
-  margin-left: 2em;
-  padding-left: 1em;
-  border-left: 2px solid var(--background-modifier-border);
-}
-
-.micropatches-sub-settings.is-hidden {
-  display: none;
-}
-
 body.micropatches-hide-traffic-lights.mod-macos:not(.is-fullscreen) {
-  --frame-left-space: 0px !important;
+  --frame-left-space: 0px;
 }
 
 body.micropatches-hide-traffic-lights.mod-macos:not(.is-fullscreen)
   .workspace-tabs.mod-top-left-space
   > .workspace-tab-header-container {
-  padding-left: var(--size-4-2, 8px) !important;
+  padding-left: var(--size-4-2, 8px);
 }
 
 /* instant-ui: near-zero instead of `none` so transitionend/animationend
    still fire and animation-fill-mode still applies — cleanup logic that
    depends on those (Notice, sidebar reveal, folder collapse, etc.) keeps
-   working, it just happens instantly. */
+   working, it just happens instantly. This has to win over every other
+   transition/animation rule in core, the active theme, snippets, and other
+   plugins, none of which this stylesheet can out-specificity in advance, so
+   !important here is load-bearing rather than a shortcut. */
 body.micropatches-instant-ui *,
 body.micropatches-instant-ui *::before,
 body.micropatches-instant-ui *::after {
@@ -40,7 +30,8 @@ body.micropatches-instant-ui *::after {
    Covers both the element itself and its ::before/::after, since several of
    these (search/settings "is-loading" progress bars, the PDF find-bar's
    spinning icon) animate a pseudo-element rather than the element with the
-   matching class. */
+   matching class. Needs !important too, to outrank the blanket rule above
+   (itself !important) rather than lose to it on source order. */
 body.micropatches-instant-ui
   :is(
     .loader-spinner svg,

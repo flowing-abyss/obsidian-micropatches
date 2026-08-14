@@ -1,6 +1,6 @@
 import { Prec } from "@codemirror/state";
 import { EditorView, type PluginValue, ViewPlugin, type ViewUpdate } from "@codemirror/view";
-import { Setting, type Plugin } from "obsidian";
+import type { Plugin, SettingGroupItem } from "obsidian";
 import type { Patch, PatchContext, PatchHandle } from "../patch";
 
 interface Config {
@@ -90,26 +90,27 @@ export const scrollOffset: Patch = {
     return { cleanup: (): void => {} };
   },
 
-  renderSettings(containerEl: HTMLElement, ctx: PatchContext): void {
-    new Setting(containerEl)
-      .setName("Scroll offset: use percentage")
-      .setDesc("On: distance is a percentage of the editor's height. Off: a fixed number of pixels.")
-      .addToggle((toggle) =>
-        toggle.setValue(ctx.getConfig("percentageMode", DEFAULT_CONFIG.percentageMode)).onChange(async (value) => {
-          await ctx.setConfig("percentageMode", value);
-        }),
-      );
-
-    new Setting(containerEl)
-      .setName("Scroll offset: distance")
-      .setDesc("Percent of editor height, or pixels if percentage mode is off. 0 Disables the margin.")
-      .addText((text) =>
-        text.setValue(String(ctx.getConfig("offset", DEFAULT_CONFIG.offset))).onChange(async (value) => {
-          const parsed = Number(value);
-          if (Number.isFinite(parsed) && parsed >= 0) {
-            await ctx.setConfig("offset", parsed);
-          }
-        }),
-      );
+  settingDefinitions(_ctx: PatchContext, key: (configKey: string) => string): SettingGroupItem[] {
+    return [
+      {
+        name: "Use percentage",
+        desc: "On, distance is a percentage of the editor's height. Off, a fixed number of pixels.",
+        control: {
+          type: "toggle",
+          key: key("percentageMode"),
+          defaultValue: DEFAULT_CONFIG.percentageMode,
+        },
+      },
+      {
+        name: "Distance",
+        desc: "Percent of editor height, or pixels if percentage mode is off. 0 disables the margin.",
+        control: {
+          type: "number",
+          key: key("offset"),
+          defaultValue: DEFAULT_CONFIG.offset,
+          min: 0,
+        },
+      },
+    ];
   },
 };
