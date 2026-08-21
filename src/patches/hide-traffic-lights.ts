@@ -37,7 +37,13 @@ export const hideTrafficLights: Patch = {
     "Moves the native macOS traffic-light window controls off-screen and removes the reserved tab-bar space, for every open window.",
 
   register(plugin: Plugin, ctx: PatchContext): PatchHandle {
-    if (!Platform.isMacOS) {
+    // Mobile emulation on macOS still reports isMacOS=true, but its renderer
+    // intentionally blocks Node/Electron modules exactly like the real mobile
+    // app. The patch has no work to do there: mobile has no native traffic
+    // lights or reserved desktop title-bar space. Guard the capability before
+    // touching require(), otherwise every mobile layout change produces an
+    // Obsidian security notice and a console error.
+    if (!Platform.isMacOS || !Platform.isDesktopApp || Platform.isMobile) {
       return { cleanup: (): void => {} };
     }
 
