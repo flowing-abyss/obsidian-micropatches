@@ -5,6 +5,7 @@ export type Cleanup = () => void;
 export interface PatchHandle {
   cleanup: Cleanup;
   onToggle?: (enabled: boolean) => void;
+  onConfigChange?: (key: string, value: unknown) => void;
 }
 
 export interface PatchContext {

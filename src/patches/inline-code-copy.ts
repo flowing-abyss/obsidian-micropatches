@@ -1,20 +1,24 @@
-import type { Plugin } from "obsidian";
+import type { Plugin, SettingGroupItem } from "obsidian";
 import type { Patch, PatchContext, PatchHandle } from "../patch";
 
-const BODY_CLASS = "micropatches-inline-code-copy";
-const READING_SELECTOR = ".markdown-rendered :not(pre) > code";
-const EDITOR_SELECTOR = ".markdown-source-view.mod-cm6 .cm-inline-code";
+const INLINE_CODE_BODY_CLASS = "micropatches-inline-code-copy";
+const HIGHLIGHT_BODY_CLASS = "micropatches-highlight-copy";
+const COPY_HIGHLIGHTS_KEY = "copyHighlights";
+const READING_CODE_SELECTOR = ".markdown-rendered :not(pre) > code";
+const READING_HIGHLIGHT_SELECTOR = ".markdown-rendered mark";
+const EDITOR_CODE_SELECTOR = ".markdown-source-view.mod-cm6 .cm-inline-code";
 const EDITOR_CONTENT_SELECTOR = ".cm-inline-code:not(.cm-formatting-code)";
+const EDITOR_HIGHLIGHT_SELECTOR = ".markdown-source-view.mod-cm6 .cm-highlight";
 
 interface WindowState {
   onClick: (event: MouseEvent) => void;
 }
 
 function inlineCodeText(target: Element): string | null {
-  const readingCode = target.closest(READING_SELECTOR);
+  const readingCode = target.closest(READING_CODE_SELECTOR);
   if (readingCode !== null) return readingCode.textContent;
 
-  const segment = target.closest(EDITOR_SELECTOR);
+  const segment = target.closest(EDITOR_CODE_SELECTOR);
   if (segment === null) return null;
   if (!segment.classList.contains("cm-formatting-code")) return segment.textContent;
 
@@ -26,6 +30,40 @@ function inlineCodeText(target: Element): string | null {
   const previous = segment.previousElementSibling;
   if (previous?.matches(EDITOR_CONTENT_SELECTOR)) return previous.textContent;
   return null;
+}
+
+function highlightedText(target: Element): string | null {
+  const readingHighlight = target.closest(READING_HIGHLIGHT_SELECTOR);
+  if (readingHighlight !== null) return readingHighlight.textContent;
+
+  const segment = target.closest(EDITOR_HIGHLIGHT_SELECTOR);
+  if (segment === null) return null;
+
+  // Nested Markdown splits one highlight into several top-level spans, with
+  // empty CodeMirror widgets between them while the syntax is hidden. Walk
+  // across only those invisible bridges, then concatenate semantic content
+  // spans while excluding every revealed formatting marker (`==`, `**`, …).
+  const adjacentHighlight = (from: Element, direction: "previous" | "next"): Element | null => {
+    let node: ChildNode | null = direction === "previous" ? from.previousSibling : from.nextSibling;
+    while (node !== null && node.textContent === "") {
+      node = direction === "previous" ? node.previousSibling : node.nextSibling;
+    }
+    return node?.nodeType === Node.ELEMENT_NODE && (node as Element).matches(".cm-highlight")
+      ? (node as Element)
+      : null;
+  };
+
+  let first = segment;
+  for (let previous = adjacentHighlight(first, "previous"); previous !== null;) {
+    first = previous;
+    previous = adjacentHighlight(first, "previous");
+  }
+
+  let text = "";
+  for (let part: Element | null = first; part !== null; part = adjacentHighlight(part, "next")) {
+    if (!part.classList.contains("cm-formatting")) text += part.textContent ?? "";
+  }
+  return text;
 }
 
 /**
@@ -44,10 +82,13 @@ export const inlineCodeCopy: Patch = {
 
   register(plugin: Plugin, ctx: PatchContext): PatchHandle {
     const windows = new Map<Window, WindowState>();
+    const copyHighlights = (): boolean => ctx.getConfig(COPY_HIGHLIGHTS_KEY, false);
 
     const applyState = (win: Window): void => {
       if (!windows.has(win)) return;
-      win.document.body.classList.toggle(BODY_CLASS, ctx.isEnabled());
+      const enabled = ctx.isEnabled();
+      win.document.body.classList.toggle(INLINE_CODE_BODY_CLASS, enabled);
+      win.document.body.classList.toggle(HIGHLIGHT_BODY_CLASS, enabled && copyHighlights());
     };
 
     const applyAll = (): void => {
@@ -62,7 +103,7 @@ export const inlineCodeCopy: Patch = {
         const target = event.target as Element | null;
         if (target?.nodeType !== Node.ELEMENT_NODE) return;
 
-        const text = inlineCodeText(target);
+        const text = inlineCodeText(target) ?? (copyHighlights() ? highlightedText(target) : null);
         if (text === null) return;
 
         void win.navigator.clipboard.writeText(text).catch((error: unknown) => {
@@ -82,7 +123,7 @@ export const inlineCodeCopy: Patch = {
 
       try {
         win.document.removeEventListener("click", state.onClick);
-        win.document.body?.classList.remove(BODY_CLASS);
+        win.document.body?.classList.remove(INLINE_CODE_BODY_CLASS, HIGHLIGHT_BODY_CLASS);
       } catch (error) {
         console.error("Micropatches (inline-code-copy): teardown cleanup failed", error);
       }
@@ -105,6 +146,23 @@ export const inlineCodeCopy: Patch = {
         for (const win of Array.from(windows.keys())) teardownWindow(win);
       },
       onToggle: (): void => applyAll(),
+      onConfigChange: (key: string): void => {
+        if (key === COPY_HIGHLIGHTS_KEY) applyAll();
+      },
     };
+  },
+
+  settingDefinitions(_ctx: PatchContext, key: (configKey: string) => string): SettingGroupItem[] {
+    return [
+      {
+        name: "Copy highlighted text",
+        desc: "Also copies ==highlighted text== on click. Off by default.",
+        control: {
+          type: "toggle",
+          key: key(COPY_HIGHLIGHTS_KEY),
+          defaultValue: false,
+        },
+      },
+    ];
   },
 };

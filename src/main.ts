@@ -74,6 +74,11 @@ export default class MicropatchesPlugin extends Plugin {
     this.handles.get(id)?.onToggle?.(enabled);
   }
 
+  async setPatchConfig(id: string, key: string, value: unknown): Promise<void> {
+    await this.contextFor(id).setConfig(key, value);
+    this.handles.get(id)?.onConfigChange?.(key, value);
+  }
+
   contextFor(id: string): PatchContext {
     return {
       isEnabled: () => this.settings.enabled[id] ?? true,
@@ -137,7 +142,7 @@ class MicropatchesSettingTab extends PluginSettingTab {
     if (kind === "enabled") {
       await this.plugin.setPatchEnabled(patchId, Boolean(value));
     } else {
-      await this.plugin.contextFor(patchId).setConfig(configKey, value);
+      await this.plugin.setPatchConfig(patchId, configKey, value);
     }
   }
 }

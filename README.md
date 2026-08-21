@@ -27,6 +27,6 @@ A small Obsidian plugin with targeted fixes and quality of life tweaks.
    Exposes fenced code block language, optional title and plain-text state to themes in both Live Preview and reading mode.
 
 7. Copy inline code on click
-   Copies inline code on click in the editor and reading mode without adding buttons or controls.
+   Copies inline code on click in the editor and reading mode without adding buttons or controls. Copying highlighted text is available as an optional setting and defaults off.
 
 Each patch can be switched on or off separately in Settings, no reload needed.
