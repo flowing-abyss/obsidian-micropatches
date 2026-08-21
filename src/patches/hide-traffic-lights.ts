@@ -2,7 +2,8 @@ import { Notice, Platform, debounce, type Plugin } from "obsidian";
 import type { Patch, PatchContext, PatchHandle } from "../patch";
 
 interface BrowserWindowLike {
-  setWindowButtonPosition(position: { x: number; y: number } | null): void;
+  setWindowButtonVisibility?: (visible: boolean) => void;
+  setWindowButtonPosition?: (position: { x: number; y: number } | null) => void;
 }
 
 interface ElectronModuleLike {
@@ -25,10 +26,11 @@ const BODY_CLASS = "micropatches-hide-traffic-lights";
 
 /**
  * Obsidian on macOS reserves layout space in the tab bar for the native
- * traffic-light window controls even when they're not wanted. This moves the
- * traffic lights off-screen via Electron's setWindowButtonPosition and
- * removes the reserved space (styles.css, scoped to a body class we toggle
- * per window), for every open window (main window + popouts).
+ * traffic-light window controls even when they're not wanted. This hides the
+ * controls through Electron's dedicated visibility API (falling back to the
+ * old off-screen-position technique on older Electron versions) and removes
+ * the reserved space (styles.css, scoped to a body class we toggle per
+ * window), for every open window (main window + popouts).
  */
 export const hideTrafficLights: Patch = {
   id: "hide-traffic-lights",
@@ -76,7 +78,13 @@ export const hideTrafficLights: Patch = {
           }
           return false;
         }
-        bw.setWindowButtonPosition({ x: -100, y: -100 });
+        if (typeof bw.setWindowButtonVisibility === "function") {
+          bw.setWindowButtonVisibility(false);
+        } else if (typeof bw.setWindowButtonPosition === "function") {
+          bw.setWindowButtonPosition({ x: -100, y: -100 });
+        } else {
+          return false;
+        }
         return true;
       } catch (error) {
         console.error("Micropatches (hide-traffic-lights): failed to hide", error);
@@ -86,7 +94,9 @@ export const hideTrafficLights: Patch = {
 
     const restoreFor = (win: Window): void => {
       try {
-        getBrowserWindow(win)?.setWindowButtonPosition(null);
+        const bw = getBrowserWindow(win);
+        bw?.setWindowButtonPosition?.(null);
+        bw?.setWindowButtonVisibility?.(true);
       } catch (error) {
         console.error("Micropatches (hide-traffic-lights): failed to restore", error);
       }
