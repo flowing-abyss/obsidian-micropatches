@@ -23,4 +23,10 @@ A small Obsidian plugin with targeted fixes and quality of life tweaks.
 5. Instant UI, off by default
    Collapses animation and transition durations to near zero across the UI, while keeping completion events and fill mode intact so nothing gets stuck invisible. Spinners and other continuous indicators are exempted.
 
+6. Code block language and title
+   Exposes fenced code block language, optional title and plain-text state to themes in both Live Preview and reading mode.
+
+7. Copy inline code on click
+   Copies inline code on click in the editor and reading mode without adding buttons or controls.
+
 Each patch can be switched on or off separately in Settings, no reload needed.

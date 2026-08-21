@@ -4,6 +4,7 @@ import { basesAutoSearch } from "./patches/bases-auto-search";
 import { codeBlockTitle } from "./patches/code-block-title";
 import { cursorRepeatThrottle } from "./patches/cursor-repeat-throttle";
 import { hideTrafficLights } from "./patches/hide-traffic-lights";
+import { inlineCodeCopy } from "./patches/inline-code-copy";
 import { instantUi } from "./patches/instant-ui";
 import { scrollOffset } from "./patches/scroll-offset";
 
@@ -14,6 +15,7 @@ const PATCHES: Patch[] = [
   basesAutoSearch,
   instantUi,
   codeBlockTitle,
+  inlineCodeCopy,
 ];
 
 // Bugfixes/replacements default on; anything that changes how the UI *feels*
