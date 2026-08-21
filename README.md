@@ -9,7 +9,7 @@ A small Obsidian plugin with targeted fixes and quality of life tweaks.
 ## Patches
 
 1. Cursor repeat throttle
-   Holding an arrow key could snowball into a multi second freeze. This coalesces held-key repeats into one CodeMirror update per animation frame instead of one per repeat event, and steps aside for suggester popups, vim mode and IME composition.
+   Holding an arrow key could snowball into a multi second freeze. This coalesces held-key repeats into one CodeMirror update per animation frame instead of one per repeat event. It supports Vim insert, normal and visual modes while stepping aside for pending Vim commands, suggester popups and IME composition.
 
 2. Scroll offset
    Keeps a minimum distance between the cursor and the top or bottom edge of the editor. Percentage or fixed pixels, both configurable.
