@@ -1,12 +1,20 @@
 import { type App, Plugin, PluginSettingTab, type SettingDefinitionItem, type SettingGroupItem } from "obsidian";
 import type { Patch, PatchContext, PatchHandle } from "./patch";
 import { basesAutoSearch } from "./patches/bases-auto-search";
+import { codeBlockTitle } from "./patches/code-block-title";
 import { cursorRepeatThrottle } from "./patches/cursor-repeat-throttle";
 import { hideTrafficLights } from "./patches/hide-traffic-lights";
 import { instantUi } from "./patches/instant-ui";
 import { scrollOffset } from "./patches/scroll-offset";
 
-const PATCHES: Patch[] = [cursorRepeatThrottle, scrollOffset, hideTrafficLights, basesAutoSearch, instantUi];
+const PATCHES: Patch[] = [
+  cursorRepeatThrottle,
+  scrollOffset,
+  hideTrafficLights,
+  basesAutoSearch,
+  instantUi,
+  codeBlockTitle,
+];
 
 // Bugfixes/replacements default on; anything that changes how the UI *feels*
 // (not just fixing or replacing something) defaults off so it's an explicit
