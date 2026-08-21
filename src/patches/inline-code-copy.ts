@@ -3,6 +3,8 @@ import type { Patch, PatchContext, PatchHandle } from "../patch";
 
 const INLINE_CODE_BODY_CLASS = "micropatches-inline-code-copy";
 const HIGHLIGHT_BODY_CLASS = "micropatches-highlight-copy";
+const COPY_FEEDBACK_CLASS = "is-micropatches-copy-confirmed";
+const COPY_FEEDBACK_MS = 160;
 const COPY_HIGHLIGHTS_KEY = "copyHighlights";
 const READING_CODE_SELECTOR = ".markdown-rendered :not(pre) > code";
 const READING_HIGHLIGHT_SELECTOR = ".markdown-rendered mark";
@@ -14,27 +16,46 @@ interface WindowState {
   onClick: (event: MouseEvent) => void;
 }
 
-function inlineCodeText(target: Element): string | null {
+interface CopyTarget {
+  text: string;
+  elements: Element[];
+}
+
+interface FeedbackTimer {
+  id: number;
+  win: Window;
+}
+
+function inlineCodeTarget(target: Element): CopyTarget | null {
   const readingCode = target.closest(READING_CODE_SELECTOR);
-  if (readingCode !== null) return readingCode.textContent;
+  if (readingCode !== null) return { text: readingCode.textContent ?? "", elements: [readingCode] };
 
   const segment = target.closest(EDITOR_CODE_SELECTOR);
   if (segment === null) return null;
-  if (!segment.classList.contains("cm-formatting-code")) return segment.textContent;
 
   // With the cursor inside inline code, CodeMirror exposes each backtick as
   // its own formatting span. Clicking either marker should still copy the
   // content between them, never the Markdown delimiters themselves.
-  const next = segment.nextElementSibling;
-  if (next?.matches(EDITOR_CONTENT_SELECTOR)) return next.textContent;
-  const previous = segment.previousElementSibling;
-  if (previous?.matches(EDITOR_CONTENT_SELECTOR)) return previous.textContent;
-  return null;
+  const content = segment.classList.contains("cm-formatting-code")
+    ? [segment.previousElementSibling, segment.nextElementSibling].find((sibling) =>
+        sibling?.matches(EDITOR_CONTENT_SELECTOR),
+      )
+    : segment;
+  if (content === undefined || content === null) return null;
+
+  const elements = [content];
+  if (content.previousElementSibling?.matches(".cm-formatting-code.cm-inline-code")) {
+    elements.unshift(content.previousElementSibling);
+  }
+  if (content.nextElementSibling?.matches(".cm-formatting-code.cm-inline-code")) {
+    elements.push(content.nextElementSibling);
+  }
+  return { text: content.textContent ?? "", elements };
 }
 
-function highlightedText(target: Element): string | null {
+function highlightedTarget(target: Element): CopyTarget | null {
   const readingHighlight = target.closest(READING_HIGHLIGHT_SELECTOR);
-  if (readingHighlight !== null) return readingHighlight.textContent;
+  if (readingHighlight !== null) return { text: readingHighlight.textContent ?? "", elements: [readingHighlight] };
 
   const segment = target.closest(EDITOR_HIGHLIGHT_SELECTOR);
   if (segment === null) return null;
@@ -60,10 +81,12 @@ function highlightedText(target: Element): string | null {
   }
 
   let text = "";
+  const elements: Element[] = [];
   for (let part: Element | null = first; part !== null; part = adjacentHighlight(part, "next")) {
+    elements.push(part);
     if (!part.classList.contains("cm-formatting")) text += part.textContent ?? "";
   }
-  return text;
+  return { text, elements };
 }
 
 /**
@@ -82,7 +105,32 @@ export const inlineCodeCopy: Patch = {
 
   register(plugin: Plugin, ctx: PatchContext): PatchHandle {
     const windows = new Map<Window, WindowState>();
+    const feedbackTimers = new Map<Element, FeedbackTimer>();
     const copyHighlights = (): boolean => ctx.getConfig(COPY_HIGHLIGHTS_KEY, false);
+
+    const showCopyFeedback = (win: Window, elements: Element[]): void => {
+      for (const element of elements) {
+        if (!element.isConnected) continue;
+        const previous = feedbackTimers.get(element);
+        if (previous) previous.win.clearTimeout(previous.id);
+
+        element.classList.add(COPY_FEEDBACK_CLASS);
+        const id = win.setTimeout(() => {
+          element.classList.remove(COPY_FEEDBACK_CLASS);
+          feedbackTimers.delete(element);
+        }, COPY_FEEDBACK_MS);
+        feedbackTimers.set(element, { id, win });
+      }
+    };
+
+    const clearCopyFeedback = (win: Window): void => {
+      for (const [element, timer] of feedbackTimers) {
+        if (timer.win !== win) continue;
+        timer.win.clearTimeout(timer.id);
+        element.classList.remove(COPY_FEEDBACK_CLASS);
+        feedbackTimers.delete(element);
+      }
+    };
 
     const applyState = (win: Window): void => {
       if (!windows.has(win)) return;
@@ -103,12 +151,15 @@ export const inlineCodeCopy: Patch = {
         const target = event.target as Element | null;
         if (target?.nodeType !== Node.ELEMENT_NODE) return;
 
-        const text = inlineCodeText(target) ?? (copyHighlights() ? highlightedText(target) : null);
-        if (text === null) return;
+        const copyTarget = inlineCodeTarget(target) ?? (copyHighlights() ? highlightedTarget(target) : null);
+        if (copyTarget === null) return;
 
-        void win.navigator.clipboard.writeText(text).catch((error: unknown) => {
-          console.error("Micropatches (inline-code-copy): clipboard write failed", error);
-        });
+        void win.navigator.clipboard.writeText(copyTarget.text).then(
+          () => showCopyFeedback(win, copyTarget.elements),
+          (error: unknown) => {
+            console.error("Micropatches (inline-code-copy): clipboard write failed", error);
+          },
+        );
       };
 
       windows.set(win, { onClick });
@@ -122,6 +173,7 @@ export const inlineCodeCopy: Patch = {
       windows.delete(win);
 
       try {
+        clearCopyFeedback(win);
         win.document.removeEventListener("click", state.onClick);
         win.document.body?.classList.remove(INLINE_CODE_BODY_CLASS, HIGHLIGHT_BODY_CLASS);
       } catch (error) {
