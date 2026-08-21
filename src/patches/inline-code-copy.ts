@@ -154,12 +154,16 @@ export const inlineCodeCopy: Patch = {
         const copyTarget = inlineCodeTarget(target) ?? (copyHighlights() ? highlightedTarget(target) : null);
         if (copyTarget === null) return;
 
-        void win.navigator.clipboard.writeText(copyTarget.text).then(
-          () => showCopyFeedback(win, copyTarget.elements),
-          (error: unknown) => {
+        void (async (): Promise<void> => {
+          try {
+            const clipboard = win.navigator.clipboard;
+            if (clipboard?.writeText === undefined) throw new Error("Clipboard API is unavailable");
+            await clipboard.writeText(copyTarget.text);
+            showCopyFeedback(win, copyTarget.elements);
+          } catch (error) {
             console.error("Micropatches (inline-code-copy): clipboard write failed", error);
-          },
-        );
+          }
+        })();
       };
 
       windows.set(win, { onClick });

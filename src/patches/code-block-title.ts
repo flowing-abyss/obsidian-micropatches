@@ -1,9 +1,14 @@
 import { MarkdownView, Plugin, type MarkdownPostProcessorContext } from "obsidian";
+import { ensureSyntaxTree, syntaxTree } from "@codemirror/language";
 import { RangeSetBuilder } from "@codemirror/state";
 import { Decoration, ViewPlugin, type DecorationSet, type EditorView, type ViewUpdate } from "@codemirror/view";
 import type { Patch, PatchContext, PatchHandle } from "../patch";
 
-const FENCE = /^(\s*)(`{3,}|~{3,})(.*)$/;
+// CommonMark permits up to three spaces before a fence. Each blockquote
+// level adds its own `>` prefix; accepting that prefix is essential for
+// callouts and quoted code blocks, while still rejecting a four-space
+// indented code literal.
+const FENCE = /^(?: {0,3}>[ \t]?)* {0,3}(`{3,}|~{3,})(.*)$/;
 
 interface FenceInfo {
   language: string;
@@ -69,15 +74,21 @@ export const codeBlockTitle: Patch = {
     // everything else on the fence.
     plugin.registerMarkdownPostProcessor((el: HTMLElement, mdCtx: MarkdownPostProcessorContext) => {
       if (!ctx.isEnabled()) return;
+      const linesBySection = new Map<string, string[]>();
       for (const pre of Array.from(el.querySelectorAll("pre"))) {
         if (pre.querySelector("code") === null) continue;
         const section = mdCtx.getSectionInfo(pre);
         if (section === null) continue;
-        const first = section.text.split("\n")[section.lineStart];
+        let lines = linesBySection.get(section.text);
+        if (lines === undefined) {
+          lines = section.text.split("\n");
+          linesBySection.set(section.text, lines);
+        }
+        const first = lines[section.lineStart];
         if (first === undefined) continue;
         const fence = FENCE.exec(first);
         if (fence === null) continue;
-        const info = parseInfo(fence[3] ?? "");
+        const info = parseInfo(fence[2] ?? "");
         if (info !== null) apply(pre, info);
       }
     });
@@ -90,42 +101,59 @@ export const codeBlockTitle: Patch = {
     const decorate = (view: EditorView): DecorationSet => {
       const builder = new RangeSetBuilder<Decoration>();
       if (!ctx.isEnabled()) return builder.finish();
-      const doc = view.state.doc;
-      // State has to be tracked from line 1: whether a fence opens or
-      // closes a block is not decidable from the line itself. Only lines
-      // inside the rendered viewport get a decoration, so the cost is one
-      // regex per line and no allocation for the rest.
-      const viewportTo = view.viewport.to;
-      let open: { marker: string; plain: boolean } | null = null;
-      for (let n = 1; n <= doc.lines; n++) {
-        const line = doc.line(n);
-        if (line.from > viewportTo) break;
-        const fence = FENCE.exec(line.text);
-        if (open !== null) {
-          if (open.plain && line.to >= view.viewport.from) {
-            builder.add(line.from, line.from, Decoration.line({ attributes: { "data-code-plain": "" } }));
-          }
-          if (fence !== null) {
-            const marker = fence[2] ?? "";
-            const rest = fence[3] ?? "";
-            if (marker[0] === open.marker[0] && marker.length >= open.marker.length && rest.trim() === "") {
-              open = null;
-            }
-          }
-          continue;
+      const { doc } = view.state;
+      const viewport = view.viewport;
+      // Markdown's Lezer tree already knows which fences enclose the
+      // viewport. Obsidian's Markdown mode exposes one HyperMD-codeblock
+      // syntax node per code row (rather than the stock Lezer FencedCode
+      // parent), so collecting only those nodes makes scroll cost
+      // proportional to visible code, not to the line number reached in a
+      // long document.
+      const tree = ensureSyntaxTree(view.state, viewport.to, 50) ?? syntaxTree(view.state);
+      const rows: Array<{ from: number; name: string }> = [];
+      tree.iterate({
+        from: viewport.from,
+        to: viewport.to,
+        enter(node): void {
+          if (node.name.includes("HyperMD-codeblock")) rows.push({ from: node.from, name: node.name });
+        },
+      });
+      if (rows.length === 0) return builder.finish();
+
+      let current: FenceInfo | null = null;
+      if (!rows[0]?.name.includes("HyperMD-codeblock-begin")) {
+        // The opening row may sit above the viewport. Walk backward only
+        // within the currently visible code block to recover its info;
+        // unlike the previous line-1 scan, this never crosses the nearest
+        // fence and is independent of document position.
+        for (let n = doc.lineAt(rows[0]?.from ?? viewport.from).number - 1; n >= 1; n--) {
+          const fence = FENCE.exec(doc.line(n).text);
+          if (fence === null) continue;
+          current = parseInfo(fence[2] ?? "");
+          break;
         }
-        if (fence === null) continue;
-        const marker = fence[2] ?? "";
-        const rest = fence[3] ?? "";
-        const info = parseInfo(rest);
-        open = { marker, plain: info?.language === "" };
-        if (info === null || line.to < view.viewport.from) continue;
-        const attributes: Record<string, string> = {};
-        if (info.language !== "") attributes["data-code-language"] = info.language;
-        else attributes["data-code-plain"] = "";
-        if (info.title !== null) attributes["data-code-title"] = info.title;
-        if (Object.keys(attributes).length === 0) continue;
-        builder.add(line.from, line.from, Decoration.line({ attributes }));
+      }
+
+      for (const row of rows) {
+        const line = doc.lineAt(row.from);
+        const begins = row.name.includes("HyperMD-codeblock-begin");
+        const ends = row.name.includes("HyperMD-codeblock-end");
+        if (begins) {
+          const fence = FENCE.exec(line.text);
+          current = fence === null ? null : parseInfo(fence[2] ?? "");
+        }
+        if (current !== null) {
+          const attributes: Record<string, string> = {};
+          if (current.language === "") attributes["data-code-plain"] = "";
+          if (begins) {
+            if (current.language !== "") attributes["data-code-language"] = current.language;
+            if (current.title !== null) attributes["data-code-title"] = current.title;
+          }
+          if (Object.keys(attributes).length !== 0) {
+            builder.add(line.from, line.from, Decoration.line({ attributes }));
+          }
+        }
+        if (ends) current = null;
       }
       return builder.finish();
     };
@@ -146,11 +174,25 @@ export const codeBlockTitle: Patch = {
     plugin.registerEditorExtension(viewPlugin);
 
     return {
-      cleanup: (): void => {},
+      cleanup: (): void => {
+        for (const leaf of plugin.app.workspace.getLeavesOfType("markdown")) {
+          const view = leaf.view;
+          if (!(view instanceof MarkdownView)) continue;
+          for (const element of Array.from(
+            view.containerEl.querySelectorAll("pre[data-code-language], pre[data-code-title], pre[data-code-plain]"),
+          )) {
+            const pre = element as HTMLElement;
+            pre.removeAttribute("data-code-language");
+            pre.removeAttribute("data-code-title");
+            pre.removeAttribute("data-code-plain");
+          }
+        }
+      },
       // Toggling off has to repaint: the reading-mode post-processor only
       // runs on render, so already-rendered blocks keep their attributes
       // until something forces them through it again.
       onToggle: (): void => {
+        plugin.app.workspace.updateOptions();
         for (const leaf of plugin.app.workspace.getLeavesOfType("markdown")) {
           const view = leaf.view;
           if (view instanceof MarkdownView) view.previewMode.rerender(true);

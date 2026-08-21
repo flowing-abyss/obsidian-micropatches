@@ -51,7 +51,13 @@ export default class MicropatchesPlugin extends Plugin {
   }
 
   override onunload(): void {
-    for (const handle of this.handles.values()) handle.cleanup();
+    for (const [id, handle] of this.handles) {
+      try {
+        handle.cleanup();
+      } catch (error) {
+        console.error(`Micropatches (${id}): cleanup failed`, error);
+      }
+    }
     this.handles.clear();
   }
 

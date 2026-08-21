@@ -15,41 +15,28 @@ body.micropatches-hide-traffic-lights.mod-macos:not(.is-fullscreen)
    transition/animation rule in core, the active theme, snippets, and other
    plugins, none of which this stylesheet can out-specificity in advance, so
    !important here is load-bearing rather than a shortcut. */
-body.micropatches-instant-ui *,
-body.micropatches-instant-ui *::before,
-body.micropatches-instant-ui *::after {
+body.micropatches-instant-ui
+  *:not(
+    :is(
+      .loader-spinner svg,
+      .loader-cube,
+      .sk-cube,
+      .cm-fat-cursor-mark,
+      .cm-animate-fat-cursor,
+      .progress-bar-line,
+      .progress-bar-subline,
+      [class*="spinner"],
+      [class*="loading"],
+      .cm-cursorLayer .cm-cursor,
+      .node-insert-event,
+      .hmd-file-uploading,
+      .mod-pending
+    )
+  ),
+body.micropatches-instant-ui *:not(:is([class*="spinner"], [class*="loading"], .mod-pending))::before,
+body.micropatches-instant-ui *:not(:is([class*="spinner"], [class*="loading"], .mod-pending))::after {
   animation-duration: 0.001ms !important;
   animation-delay: 0s !important;
   transition-duration: 0.001ms !important;
   transition-delay: 0s !important;
-}
-
-/* Allowlist: things that must keep genuinely animating, not freeze on a
-   stale frame — spinners, indeterminate progress bars, and CodeMirror's
-   blinking cursor (whose rate is driven by the animation duration itself).
-   Covers both the element itself and its ::before/::after, since several of
-   these (search/settings "is-loading" progress bars, the PDF find-bar's
-   spinning icon) animate a pseudo-element rather than the element with the
-   matching class. Needs !important too, to outrank the blanket rule above
-   (itself !important) rather than lose to it on source order. */
-body.micropatches-instant-ui
-  :is(
-    .loader-spinner svg,
-    .loader-cube,
-    .sk-cube,
-    .cm-fat-cursor-mark,
-    .cm-animate-fat-cursor,
-    .progress-bar-line,
-    .progress-bar-subline,
-    [class*="spinner"],
-    [class*="loading"],
-    .cm-cursorLayer .cm-cursor,
-    .node-insert-event,
-    .hmd-file-uploading,
-    .mod-pending
-  ),
-body.micropatches-instant-ui :is([class*="spinner"], [class*="loading"], .mod-pending)::before,
-body.micropatches-instant-ui :is([class*="spinner"], [class*="loading"], .mod-pending)::after {
-  animation-duration: revert !important;
-  animation-delay: revert !important;
 }

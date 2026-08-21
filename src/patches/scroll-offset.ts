@@ -10,9 +10,9 @@ interface Config {
 
 const DEFAULT_CONFIG: Config = { percentageMode: true, offset: 25 };
 
-function calcRequiredOffset(container: HTMLElement, cursorHeight: number, config: Config): number {
-  const maxOffset = (container.offsetHeight - cursorHeight) / 2;
-  const requiredOffset = config.percentageMode ? (container.offsetHeight * config.offset) / 100 : config.offset;
+function calcRequiredOffset(containerHeight: number, cursorHeight: number, config: Config): number {
+  const maxOffset = (containerHeight - cursorHeight) / 2;
+  const requiredOffset = config.percentageMode ? (containerHeight * config.offset) / 100 : config.offset;
   return Math.max(0, Math.min(requiredOffset, maxOffset));
 }
 
@@ -24,13 +24,19 @@ function createExtension(getConfig: () => Config, isEnabled: () => boolean) {
         active = true;
 
         update(update: ViewUpdate): void {
-          if (!update.selectionSet) return;
+          if (!isEnabled() || !update.selectionSet) return;
           const view = update.view;
           view.requestMeasure({
-            read: () => view.coordsAtPos(view.state.selection.main.head),
-            write: (cursor) => {
-              if (!cursor) return;
-              this.margin = this.active ? calcRequiredOffset(view.dom, cursor.bottom - cursor.top + 5, getConfig()) : 0;
+            key: this,
+            read: () => ({
+              cursor: view.coordsAtPos(view.state.selection.main.head),
+              containerHeight: view.dom.offsetHeight,
+            }),
+            write: ({ cursor, containerHeight }) => {
+              if (cursor === null) return;
+              this.margin = this.active
+                ? calcRequiredOffset(containerHeight, cursor.bottom - cursor.top + 5, getConfig())
+                : 0;
             },
           });
         }

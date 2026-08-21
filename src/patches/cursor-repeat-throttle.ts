@@ -102,7 +102,9 @@ export const cursorRepeatThrottle: Patch = {
             if (next.head === cur.head && next.goalColumn === cur.goalColumn) break;
             cur = next;
           }
-          return entry.extend ? EditorSelection.range(range.anchor, cur.head, undefined, cur.goalColumn) : cur;
+          return entry.extend
+            ? EditorSelection.range(range.anchor, cur.head, cur.goalColumn, cur.bidiLevel ?? undefined, cur.assoc)
+            : cur;
         });
 
         view.dispatch({

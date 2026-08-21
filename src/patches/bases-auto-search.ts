@@ -23,10 +23,10 @@ export const basesAutoSearch: Patch = {
     const openSearch = (): void => {
       if (!ctx.isEnabled()) return;
       for (const leaf of plugin.app.workspace.getLeavesOfType("bases")) {
-        if (processed.has(leaf)) continue;
         const searchMenu = (leaf.view as unknown as BasesLeafView).controller?.searchMenu;
         if (!searchMenu) continue;
-        processed.add(leaf);
+        if (processed.has(searchMenu)) continue;
+        processed.add(searchMenu);
         searchMenu.open();
       }
     };
