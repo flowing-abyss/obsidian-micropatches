@@ -15,7 +15,7 @@ A small Obsidian plugin with targeted fixes and quality of life tweaks.
    Keeps a minimum distance between the cursor and the top or bottom edge of the editor. Percentage or fixed pixels, both configurable.
 
 3. Hide traffic lights, macOS only
-   Moves the native window buttons off screen and removes the reserved tab bar space, for every open window.
+   Hides the native window buttons through Electron's window API and removes the reserved tab bar space, for every open desktop window.
 
 4. Bases auto search
    Opens the search bar the first time a Bases view is shown.
@@ -24,9 +24,9 @@ A small Obsidian plugin with targeted fixes and quality of life tweaks.
    Collapses animation and transition durations to near zero across the UI, while keeping completion events and fill mode intact so nothing gets stuck invisible. Spinners and other continuous indicators are exempted.
 
 6. Code block language and title
-   Exposes fenced code block language, optional title and plain-text state to themes in both Live Preview and reading mode.
+   Exposes fenced code block language, optional title and plain-text state to themes in both Live Preview and reading mode. It only supplies metadata for styling; it does not change rendering or copy behavior by itself.
 
 7. Copy inline code on click
-   Copies inline code on click in the editor and reading mode without adding buttons or controls. Copying highlighted text is available as an optional setting and defaults off.
+   Copies inline code on click in the editor and reading mode without adding buttons or controls, then briefly confirms a successful copy. Copying highlighted text is available as an optional setting and defaults off.
 
-Each patch can be switched on or off separately in Settings, no reload needed.
+Each patch can be switched on or off separately in Settings, no reload needed. Fixes are enabled by default; Instant UI and the additional highlighted-text copy option are opt-in.
