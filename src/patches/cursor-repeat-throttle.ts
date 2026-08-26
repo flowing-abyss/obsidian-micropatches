@@ -125,27 +125,29 @@ function getVimMode(plugin: Plugin, view: EditorView, key: string): VimMode {
  * the backlog grows on itself — a few ms of lag can escalate into a
  * multi-second freeze the longer the key is held.
  *
- * This coalesces repeat events: the first (non-repeat) keydown is always
- * handled immediately and normally. Repeats are accumulated and resolved to
- * a single position update via CodeMirror's own (dispatch-free) moveByChar /
+ * This coalesces repeat events: an unmodified first keydown is handled
+ * immediately and normally. Repeats are accumulated and resolved to a single
+ * position update via CodeMirror's own (dispatch-free) moveByChar /
  * moveVertically helpers, then flushed as one dispatch per animation frame —
  * so CodeMirror never receives more than one real update per frame no matter
  * how fast the OS sends repeat events.
  *
- * We only intercept the plain arrow keys (optionally with Shift, to extend a
- * selection) and only their *repeat* events — the first press of every key
- * combo always goes through CodeMirror/Obsidian's normal handling untouched.
- * We explicitly stay out of the way of an open suggester/autocomplete popup,
- * IME composition, and Vim states with pending input. Vim insert mode uses the
- * normal CM6 path. Vim command/visual mode receives one counted Vim command
- * per frame, preserving its line-boundary and selection semantics without
- * replaying every queued keydown.
+ * Vertical Shift+Arrow is handled here as a compatibility fix as well. The
+ * CodeMirror commands bundled by current Obsidian lose the selection head's
+ * side association at a soft-wrap boundary. The next keypress is then consumed
+ * merely restoring that invisible association instead of extending by another
+ * visual line. Preserving the association returned by moveVertically makes
+ * every keypress advance exactly one visual line; repeated events are still
+ * coalesced. Horizontal Shift+Arrow and other modified commands stay native.
+ * We also stay out of the way of an open suggester/autocomplete popup, IME
+ * composition, and Vim states with pending input. Vim insert mode uses the CM6
+ * path. Vim command/visual mode receives one counted Vim command per frame.
  */
 export const cursorRepeatThrottle: Patch = {
   id: "cursor-repeat-throttle",
   name: "Cursor repeat throttle",
   description:
-    "Coalesces held-arrow-key auto-repeat into at most one CodeMirror update per animation frame, preventing the input queue from snowballing into multi-second freezes.",
+    "Coalesces held-arrow-key auto-repeat into at most one CodeMirror update per animation frame, preventing multi-second freezes, and keeps vertical Shift selection moving across soft wraps one visual line per keypress.",
 
   register(plugin: Plugin, ctx: PatchContext): PatchHandle {
     const pending = new Map<EditorView, PendingMove>();
@@ -171,14 +173,14 @@ export const cursorRepeatThrottle: Patch = {
 
         const sel = view.state.selection;
         const newRanges = sel.ranges.map((range) => {
-          let cur = EditorSelection.cursor(range.head, range.assoc, undefined, range.goalColumn);
+          let cur = entry.extend ? range : EditorSelection.cursor(range.head, range.assoc, undefined, range.goalColumn);
           for (let i = 0; i < entry.count; i++) {
             const next =
               entry.type === "char" ? view.moveByChar(cur, entry.forward) : view.moveVertically(cur, entry.forward);
             // No progress (e.g. hit a document boundary, or the target line
             // isn't rendered/measurable yet) — stop instead of repeating a
             // no-op, which would otherwise let goalColumn drift.
-            if (next.head === cur.head && next.goalColumn === cur.goalColumn) break;
+            if (next.head === cur.head && next.goalColumn === cur.goalColumn && next.assoc === cur.assoc) break;
             cur = next;
           }
           return entry.extend
@@ -189,7 +191,7 @@ export const cursorRepeatThrottle: Patch = {
         view.dispatch({
           selection: EditorSelection.create(newRanges, sel.mainIndex),
           scrollIntoView: true,
-          userEvent: entry.extend ? "select.extend" : "select",
+          userEvent: "select",
         });
       } catch (error) {
         console.error("Micropatches (cursor-repeat-throttle): flush failed", error);
@@ -248,14 +250,22 @@ export const cursorRepeatThrottle: Patch = {
 
     const handleKeydown = (event: KeyboardEvent, view: EditorView): void => {
       if (!ctx.isEnabled()) return;
-      if (!event.repeat || event.ctrlKey || event.metaKey || event.altKey || event.isComposing) {
+      const base = MOVE_KEYS[event.key];
+      const extendsVertically = event.shiftKey && base?.type === "line";
+      if (
+        event.ctrlKey ||
+        event.metaKey ||
+        event.altKey ||
+        event.isComposing ||
+        (event.shiftKey && !extendsVertically) ||
+        (!event.repeat && !extendsVertically)
+      ) {
         // Preserve ordering when a different key arrives before the rAF that
         // owns an already queued movement.
         flush(view);
         return;
       }
 
-      const base = MOVE_KEYS[event.key];
       if (!base) {
         flush(view);
         return;
@@ -277,11 +287,18 @@ export const cursorRepeatThrottle: Patch = {
       // A capture listener is the only stable way to stop that handler from
       // consuming every repeat before this patch can coalesce it.
       event.stopImmediatePropagation();
-      queueMove(view, {
+      const move: Move = {
         ...base,
         extend: event.shiftKey,
         ...(typeof vimMode === "object" ? { vim: vimMode } : {}),
-      });
+      };
+      if (event.repeat) {
+        queueMove(view, move);
+      } else {
+        flush(view);
+        pending.set(view, { ...move, count: 1 });
+        flush(view);
+      }
     };
 
     plugin.registerEditorExtension(
