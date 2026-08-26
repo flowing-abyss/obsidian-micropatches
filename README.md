@@ -1,6 +1,8 @@
 # Micropatches
 
 [![Available in Obsidian](https://img.shields.io/badge/Available%20in%20Obsidian-7C3AED?logo=obsidian&logoColor=white&style=flat-square)](https://obsidian.md/plugins?id=micropatches)
+[![Release](https://github.com/flowing-abyss/obsidian-micropatches/actions/workflows/release.yml/badge.svg)](https://github.com/flowing-abyss/obsidian-micropatches/actions/workflows/release.yml)
+[![Downloads](https://img.shields.io/github/downloads/flowing-abyss/obsidian-micropatches/total?style=flat-square&label=downloads&color=blue)](https://github.com/flowing-abyss/obsidian-micropatches/releases)
 
 ![Micropatches](assets/banner.png)
 
