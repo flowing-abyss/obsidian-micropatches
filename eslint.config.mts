@@ -27,10 +27,6 @@ export default [
         tsconfigRootDir: import.meta.dirname,
       },
     },
-    rules: {
-      // We keep the imperative Setting API for now, not the 1.13+ declarative one.
-      "obsidianmd/settings-tab/prefer-setting-definitions": "off",
-    },
   },
   eslintConfigPrettier,
 ];

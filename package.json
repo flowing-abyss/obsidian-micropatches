@@ -1,6 +1,6 @@
 {
   "name": "micropatches",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "description": "Small, targeted fixes and quality of life tweaks.",
   "main": "main.js",
   "type": "module",
@@ -13,8 +13,19 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "eslint . --max-warnings 0",
+    "deadcode": "knip",
     "typecheck": "tsc -noEmit -skipLibCheck",
-    "verify": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm build"
+    "verify": "pnpm format:check && pnpm lint && pnpm deadcode && pnpm typecheck && pnpm build"
+  },
+  "knip": {
+    "project": [
+      "src/**/*.ts",
+      "*.mjs",
+      "*.mts"
+    ],
+    "ignoreDependencies": [
+      "electron"
+    ]
   },
   "release": {
     "mainJsBudgetBytes": 65536
@@ -34,9 +45,10 @@
     "esbuild": "0.28.1",
     "eslint": "^9.39.5",
     "eslint-config-prettier": "^10.1.8",
-    "eslint-plugin-obsidianmd": "^0.4.1",
+    "eslint-plugin-obsidianmd": "^0.4.2",
     "globals": "^17.11.0",
     "jiti": "^2.7.0",
+    "knip": "^6.34.0",
     "obsidian": "latest",
     "prettier": "^3.9.6",
     "typescript": "^5.9.3",

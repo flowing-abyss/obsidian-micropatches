@@ -1,8 +1,16 @@
-import { type App, Plugin, PluginSettingTab, type SettingDefinitionItem, type SettingGroupItem } from "obsidian";
+import {
+  type App,
+  Notice,
+  Plugin,
+  PluginSettingTab,
+  type SettingDefinitionItem,
+  type SettingGroupItem,
+} from "obsidian";
 import type { Patch, PatchContext, PatchHandle } from "./patch";
 import { basesAutoSearch } from "./patches/bases-auto-search";
 import { codeBlockTitle } from "./patches/code-block-title";
 import { cursorRepeatThrottle } from "./patches/cursor-repeat-throttle";
+import { footnoteSidenotes } from "./patches/footnote-sidenotes";
 import { hideTrafficLights } from "./patches/hide-traffic-lights";
 import { inlineCodeCopy } from "./patches/inline-code-copy";
 import { instantUi } from "./patches/instant-ui";
@@ -16,6 +24,7 @@ const PATCHES: Patch[] = [
   instantUi,
   codeBlockTitle,
   inlineCodeCopy,
+  footnoteSidenotes,
 ];
 
 // Bugfixes/replacements default on; anything that changes how the UI *feels*
@@ -45,6 +54,16 @@ export default class MicropatchesPlugin extends Plugin {
     for (const patch of PATCHES) {
       const handle = patch.register(this, this.contextFor(patch.id));
       this.handles.set(patch.id, handle);
+      this.addCommand({
+        id: `toggle-${patch.id}`,
+        name: `Toggle ${patch.name}`,
+        callback: () => {
+          const enabled = !(this.settings.enabled[patch.id] ?? true);
+          void this.setPatchEnabled(patch.id, enabled).then(() => {
+            new Notice(`${patch.name}: ${enabled ? "enabled" : "disabled"}`);
+          });
+        },
+      });
     }
 
     this.addSettingTab(new MicropatchesSettingTab(this.app, this));

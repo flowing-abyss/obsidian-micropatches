@@ -1,6 +1,6 @@
 import type { Plugin, SettingGroupItem } from "obsidian";
 
-export type Cleanup = () => void;
+type Cleanup = () => void;
 
 export interface PatchHandle {
   cleanup: Cleanup;

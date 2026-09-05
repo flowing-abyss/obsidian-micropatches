@@ -31,4 +31,7 @@ A small Obsidian plugin with targeted fixes and quality of life tweaks.
 7. Copy inline code on click
    Copies inline code on click in the editor and reading mode without adding buttons or controls, then briefly confirms a successful copy. Copying highlighted text is available as an optional setting and defaults off.
 
-Each patch can be switched on or off separately in Settings, no reload needed. Fixes are enabled by default; Instant UI and the additional highlighted-text copy option are opt-in.
+8. Footnotes in the margin
+   Shows editable footnotes beside the document in Live Preview and reading mode. Choose the side and distance; crowded notes collapse into rows that expand on hover or click. The original footnote list remains at the end.
+
+Each patch can be switched on or off separately in Settings or with its `Toggle …` command, no reload needed. Fixes are enabled by default; Instant UI and the additional highlighted-text copy option are opt-in.
