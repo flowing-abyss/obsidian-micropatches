@@ -159,7 +159,7 @@ const CSS = `
   all: unset;
   box-sizing: border-box;
   display: inline-flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
   width: 24px;
   min-height: 24px;
@@ -564,6 +564,35 @@ function contentBlock(anchor: HTMLElement): HTMLElement | null {
   return block;
 }
 
+function visibleTextTop(block: HTMLElement): number | null {
+  const doc = block.ownerDocument;
+  // Keep NodeFilter values realm-neutral for editors living in popout windows.
+  const showText = 4;
+  const filterAccept = 1;
+  const filterReject = 2;
+  const walker = doc.createTreeWalker(block, showText, {
+    acceptNode(node) {
+      const text = node as Text;
+      const parent = text.parentElement;
+      if (parent?.closest(`.${NOTE_CLASS}, .${ANCHOR_CLASS}`) !== null) return filterReject;
+      return text.data.trim() === "" ? filterReject : filterAccept;
+    },
+  });
+  let node: Node | null;
+  while ((node = walker.nextNode()) !== null) {
+    const text = node as Text;
+    const offset = text.data.search(/\S/u);
+    if (offset === -1) continue;
+    const codePoint = text.data.codePointAt(offset);
+    const range = doc.createRange();
+    range.setStart(text, offset);
+    range.setEnd(text, offset + (codePoint !== undefined && codePoint > 0xffff ? 2 : 1));
+    const rect = range.getBoundingClientRect();
+    if (rect.height > 0 && Number.isFinite(rect.top)) return rect.top;
+  }
+  return null;
+}
+
 function collapsedRowHeight(note: HTMLElement): number {
   const win = note.ownerDocument.defaultView;
   const fontSize = Number.parseFloat(win?.getComputedStyle(note).fontSize ?? "");
@@ -643,6 +672,7 @@ function layoutRoot(
     root;
   const viewportRect = viewport.getBoundingClientRect();
   const plans: LayoutPlan[] = [];
+  const textTops = new Map<HTMLElement, number>();
 
   // Read anchor geometry first, then mutate every note, then measure every
   // result. This keeps one crowded paragraph from forcing a layout per note.
@@ -659,8 +689,13 @@ function layoutRoot(
     if (width < MIN_WIDTH) continue;
 
     const targetLeft = side === "left" ? blockRect.left - distance - width : blockRect.right + distance;
-    const baseY = blockRect.top - anchorRect.top;
-    plans.push({ note, top: blockRect.top, baseY, width, x: targetLeft - anchorRect.left });
+    let textTop = textTops.get(block);
+    if (textTop === undefined) {
+      textTop = visibleTextTop(block) ?? blockRect.top;
+      textTops.set(block, textTop);
+    }
+    const baseY = textTop - anchorRect.top;
+    plans.push({ note, top: textTop, baseY, width, x: targetLeft - anchorRect.left });
   }
 
   for (const plan of plans) {
