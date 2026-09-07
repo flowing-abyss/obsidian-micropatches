@@ -40,3 +40,105 @@ body.micropatches-instant-ui *:not(:is([class*="spinner"], [class*="loading"], .
   transition-duration: 0.001ms !important;
   transition-delay: 0s !important;
 }
+
+.view-header-title-container.micropatches-periodic-breadcrumbs > button.micropatches-periodic-breadcrumb {
+  all: unset;
+  display: inline-flex;
+  flex: 0 1 auto;
+  align-items: center;
+  box-sizing: border-box;
+  min-width: 0;
+  max-width: min(13ch, 24vw);
+  height: 24px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s, 4px);
+  padding: 0 var(--size-2-2, 8px);
+  background: var(--background-secondary);
+  color: var(--text-muted);
+  cursor: pointer;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  font-weight: var(--font-medium, 500);
+  line-height: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition:
+    color 80ms ease-out,
+    background-color 80ms ease-out,
+    border-color 80ms ease-out;
+}
+
+.view-header-title-container.micropatches-periodic-breadcrumbs > button.micropatches-periodic-breadcrumb::before,
+.view-header-title-container.micropatches-periodic-breadcrumbs > button.micropatches-periodic-breadcrumb::after {
+  flex: 0 0 auto;
+  color: var(--text-faint);
+  font-size: 1.25em;
+  font-weight: var(--font-normal, 400);
+  line-height: 0.7;
+}
+
+.view-header-title-container.micropatches-periodic-breadcrumbs > button.micropatches-periodic-breadcrumb.is-previous {
+  gap: 0.32em;
+  justify-content: flex-end;
+  margin-inline-end: var(--size-4-3, 12px);
+}
+
+.view-header-title-container.micropatches-periodic-breadcrumbs
+  > button.micropatches-periodic-breadcrumb.is-previous::before {
+  content: "‹";
+}
+
+.view-header-title-container.micropatches-periodic-breadcrumbs > button.micropatches-periodic-breadcrumb.is-next {
+  gap: 0.32em;
+  justify-content: flex-start;
+  margin-inline-start: var(--size-4-3, 12px);
+}
+
+.view-header-title-container.micropatches-periodic-breadcrumbs
+  > button.micropatches-periodic-breadcrumb.is-next::after {
+  content: "›";
+}
+
+.view-header-title-container.micropatches-periodic-breadcrumbs
+  > button.micropatches-periodic-breadcrumb:hover:not(:disabled),
+.view-header-title-container.micropatches-periodic-breadcrumbs > button.micropatches-periodic-breadcrumb:focus-visible {
+  background: var(--background-modifier-hover);
+  border-color: var(--background-modifier-border-hover, var(--background-modifier-border));
+  color: var(--text-normal);
+}
+
+.view-header-title-container.micropatches-periodic-breadcrumbs > button.micropatches-periodic-breadcrumb:focus-visible {
+  outline: 1px solid var(--background-modifier-border-focus);
+  outline-offset: 1px;
+}
+
+.view-header-title-container.micropatches-periodic-breadcrumbs > button.micropatches-periodic-breadcrumb.is-create {
+  color: var(--text-faint);
+}
+
+.view-header-title-container.micropatches-periodic-breadcrumbs
+  > button.micropatches-periodic-breadcrumb.is-create:hover,
+.view-header-title-container.micropatches-periodic-breadcrumbs
+  > button.micropatches-periodic-breadcrumb.is-create:focus-visible {
+  color: var(--text-muted);
+}
+
+.view-header-title-container.micropatches-periodic-breadcrumbs > button.micropatches-periodic-breadcrumb:disabled {
+  color: var(--text-faint);
+  cursor: default;
+  opacity: 0.55;
+}
+
+@media (max-width: 600px) {
+  .view-header-title-container.micropatches-periodic-breadcrumbs > button.micropatches-periodic-breadcrumb {
+    max-width: 11ch;
+    padding-inline: var(--size-2-1, 4px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .view-header-title-container.micropatches-periodic-breadcrumbs > button.micropatches-periodic-breadcrumb {
+    transition: none;
+  }
+}

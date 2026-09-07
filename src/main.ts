@@ -14,6 +14,7 @@ import { footnoteSidenotes } from "./patches/footnote-sidenotes";
 import { hideTrafficLights } from "./patches/hide-traffic-lights";
 import { inlineCodeCopy } from "./patches/inline-code-copy";
 import { instantUi } from "./patches/instant-ui";
+import { periodicBreadcrumbs } from "./patches/periodic-breadcrumbs";
 import { scrollOffset } from "./patches/scroll-offset";
 
 const PATCHES: Patch[] = [
@@ -25,6 +26,7 @@ const PATCHES: Patch[] = [
   codeBlockTitle,
   inlineCodeCopy,
   footnoteSidenotes,
+  periodicBreadcrumbs,
 ];
 
 // Bugfixes/replacements default on; anything that changes how the UI *feels*

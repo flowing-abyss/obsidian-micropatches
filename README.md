@@ -34,4 +34,7 @@ A small Obsidian plugin with targeted fixes and quality of life tweaks.
 8. Footnotes in the margin
    Shows editable footnotes beside the document in Live Preview and reading mode. Choose the side and distance; crowded notes collapse into rows that expand on hover or click. The original footnote list remains at the end.
 
+9. Periodic note breadcrumbs
+   Adds the previous and next existing period to a periodic note's breadcrumb. The muted next period creates a new note when the sequence reaches its end. Requires Periodic Notes 1.0.0 or newer.
+
 Each patch can be switched on or off separately in Settings or with its `Toggle …` command, no reload needed. Fixes are enabled by default; Instant UI and the additional highlighted-text copy option are opt-in.
