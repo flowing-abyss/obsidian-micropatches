@@ -28,7 +28,7 @@
     ]
   },
   "release": {
-    "mainJsBudgetBytes": 65536
+    "mainJsBudgetBytes": 98304
   },
   "keywords": [],
   "license": "MIT",

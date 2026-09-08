@@ -8,6 +8,16 @@ body.micropatches-hide-traffic-lights.mod-macos:not(.is-fullscreen)
   padding-left: var(--size-4-2, 8px);
 }
 
+/* Every patch is one native settings group. The consistent group spacing
+   separates patches; indentation alone communicates child settings. */
+.micropatches-setting-patch > .setting-items > .setting-item:first-child > .setting-item-info > .setting-item-name {
+  font-weight: var(--font-medium, 500);
+}
+
+.micropatches-setting-patch > .setting-items > .setting-item:not(:first-child) > .setting-item-info {
+  padding-inline-start: var(--size-4-5, 20px);
+}
+
 /* instant-ui: near-zero instead of `none` so transitionend/animationend
    still fire and animation-fill-mode still applies — cleanup logic that
    depends on those (Notice, sidebar reveal, folder collapse, etc.) keeps
@@ -139,6 +149,269 @@ body.micropatches-instant-ui *:not(:is([class*="spinner"], [class*="loading"], .
 
 @media (prefers-reduced-motion: reduce) {
   .view-header-title-container.micropatches-periodic-breadcrumbs > button.micropatches-periodic-breadcrumb {
+    transition: none;
+  }
+}
+
+.nav-action-button.micropatches-backlinks-default-filter {
+  position: relative;
+}
+
+.micropatches-backlinks-default-filter-dot {
+  position: absolute;
+  inset-block-start: 2px;
+  inset-inline-end: 2px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--interactive-accent);
+  box-shadow: 0 0 0 1px var(--background-secondary);
+  pointer-events: none;
+}
+
+.micropatches-backlinks-default-filter.is-overridden .micropatches-backlinks-default-filter-dot {
+  opacity: 0.4;
+}
+
+.micropatches-heading-backlink-indicator {
+  --micropatches-heading-backlink-icon-size: clamp(15px, 0.6em, 18px);
+
+  all: unset;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  min-width: calc(var(--micropatches-heading-backlink-icon-size) + 6px);
+  height: calc(var(--micropatches-heading-backlink-icon-size) + 6px);
+  margin-inline-start: 0.32em;
+  border-radius: var(--radius-s, 4px);
+  padding-inline: 3px;
+  color: var(--text-faint);
+  cursor: pointer;
+  font-family: var(--font-interface);
+  font-size: inherit;
+  font-style: normal;
+  font-weight: var(--font-medium, 500);
+  line-height: 1;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+
+.micropatches-heading-backlink-indicator > span:first-child {
+  display: inline-flex;
+}
+
+.micropatches-heading-backlink-indicator svg {
+  width: var(--micropatches-heading-backlink-icon-size);
+  height: var(--micropatches-heading-backlink-icon-size);
+  stroke-width: 1.8;
+}
+
+.micropatches-heading-backlink-indicator:hover,
+.micropatches-heading-backlink-indicator[aria-expanded="true"] {
+  background: var(--background-modifier-hover);
+  color: var(--text-muted);
+}
+
+.micropatches-heading-backlink-indicator:focus-visible {
+  outline: 2px solid var(--background-modifier-border-focus);
+  outline-offset: 1px;
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.popover.hover-popover.micropatches-heading-backlinks-popover {
+  --popover-width: 100%;
+
+  position: fixed;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  width: min(340px, calc(100vw - 16px));
+  max-height: min(420px, calc(100vh - 16px));
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m, 8px);
+  padding: 0;
+  background: var(--background-primary);
+  color: var(--text-normal);
+  box-shadow: var(--shadow-s);
+  overflow: hidden;
+  z-index: var(--layer-popover, 30);
+}
+
+.micropatches-heading-backlinks-title {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 36px;
+  border-bottom: 1px solid var(--background-modifier-border);
+  padding: 0 var(--size-4-3, 12px);
+  color: var(--text-muted);
+  font-family: var(--font-interface);
+  font-size: var(--font-ui-small);
+  font-weight: var(--font-semibold, 600);
+}
+
+.micropatches-heading-backlinks-title .micropatches-heading-backlink-count {
+  min-width: 1.55em;
+  border-radius: var(--radius-s, 4px);
+  padding: 0.12em 0.38em;
+  background: var(--background-secondary);
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.micropatches-heading-backlinks-list {
+  min-height: 0;
+  padding: var(--size-2-2, 4px);
+  overflow-y: auto;
+}
+
+.micropatches-heading-backlinks-item {
+  all: unset;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  box-sizing: border-box;
+  width: 100%;
+  border-radius: var(--radius-s, 4px);
+  padding: var(--size-2-2, 6px) var(--size-4-2, 8px);
+  cursor: pointer;
+  font-family: var(--font-interface);
+  text-align: start;
+}
+
+.popover.hover-popover.micropatches-heading-backlinks-popover
+  .micropatches-heading-backlinks-list
+  > button:is(.micropatches-heading-backlinks-item, .micropatches-heading-backlinks-more)[type="button"] {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.popover.hover-popover.micropatches-heading-backlinks-popover .micropatches-heading-backlinks-item:hover,
+.popover.hover-popover.micropatches-heading-backlinks-popover .micropatches-heading-backlinks-item:focus-visible {
+  background: var(--background-modifier-hover);
+}
+
+.popover.hover-popover.micropatches-heading-backlinks-popover .micropatches-heading-backlinks-item:focus-visible {
+  outline: 2px solid var(--background-modifier-border-focus);
+  outline-offset: -2px;
+}
+
+.micropatches-heading-backlinks-file {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  color: var(--text-normal);
+  font-size: var(--font-ui-small);
+  font-weight: var(--font-medium, 500);
+  line-height: 1.35;
+}
+
+.micropatches-heading-backlinks-file > span:first-child {
+  display: inline-flex;
+  flex: 0 0 auto;
+  margin-inline-end: var(--size-2-2, 6px);
+  color: var(--text-faint);
+}
+
+.micropatches-heading-backlinks-file svg {
+  width: 13px;
+  height: 13px;
+}
+
+.micropatches-heading-backlinks-filename {
+  flex: 0 1 auto;
+  min-width: 3ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.micropatches-heading-backlinks-path {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+  font-weight: var(--font-normal, 400);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.micropatches-heading-backlinks-path:empty {
+  display: none;
+}
+
+.micropatches-heading-backlinks-line {
+  flex: 0 0 auto;
+  color: var(--text-faint);
+  font-weight: var(--font-normal, 400);
+  font-variant-numeric: tabular-nums;
+}
+
+.micropatches-heading-backlinks-preview {
+  display: -webkit-box;
+  margin-block-start: 2px;
+  color: var(--text-muted);
+  font-family: var(--font-text);
+  font-size: var(--font-ui-smaller);
+  font-weight: var(--font-normal, 400);
+  line-height: 1.35;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.micropatches-heading-backlinks-preview.is-empty {
+  color: var(--text-faint);
+}
+
+.micropatches-heading-backlinks-more {
+  all: unset;
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  border-radius: var(--radius-s, 4px);
+  padding: var(--size-2-2, 6px) var(--size-4-2, 8px);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-family: var(--font-interface);
+  font-size: var(--font-ui-small);
+  text-align: center;
+}
+
+.popover.hover-popover.micropatches-heading-backlinks-popover .micropatches-heading-backlinks-more:hover,
+.popover.hover-popover.micropatches-heading-backlinks-popover .micropatches-heading-backlinks-more:focus-visible {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+.popover.hover-popover.micropatches-heading-backlinks-popover .micropatches-heading-backlinks-more:focus-visible {
+  outline: 2px solid var(--background-modifier-border-focus);
+  outline-offset: -2px;
+}
+
+@media (pointer: coarse) {
+  .micropatches-heading-backlink-indicator {
+    min-width: 28px;
+    height: 28px;
+  }
+}
+
+@media print {
+  .micropatches-heading-backlink-indicator,
+  .micropatches-heading-backlinks-popover {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .micropatches-heading-backlink-indicator {
     transition: none;
   }
 }

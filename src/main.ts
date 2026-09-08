@@ -3,14 +3,17 @@ import {
   Notice,
   Plugin,
   PluginSettingTab,
+  type SettingDefinitionGroup,
   type SettingDefinitionItem,
   type SettingGroupItem,
 } from "obsidian";
 import type { Patch, PatchContext, PatchHandle } from "./patch";
+import { backlinksDefaults } from "./patches/backlinks-defaults";
 import { basesAutoSearch } from "./patches/bases-auto-search";
 import { codeBlockTitle } from "./patches/code-block-title";
 import { cursorRepeatThrottle } from "./patches/cursor-repeat-throttle";
 import { footnoteSidenotes } from "./patches/footnote-sidenotes";
+import { headingBacklinks } from "./patches/heading-backlinks";
 import { hideTrafficLights } from "./patches/hide-traffic-lights";
 import { inlineCodeCopy } from "./patches/inline-code-copy";
 import { instantUi } from "./patches/instant-ui";
@@ -21,18 +24,15 @@ const PATCHES: Patch[] = [
   cursorRepeatThrottle,
   scrollOffset,
   hideTrafficLights,
+  backlinksDefaults,
   basesAutoSearch,
   instantUi,
   codeBlockTitle,
   inlineCodeCopy,
   footnoteSidenotes,
+  headingBacklinks,
   periodicBreadcrumbs,
 ];
-
-// Bugfixes/replacements default on; anything that changes how the UI *feels*
-// (not just fixing or replacing something) defaults off so it's an explicit
-// opt-in.
-const DEFAULT_OFF = new Set<string>([instantUi.id]);
 
 interface MicropatchesSettings {
   enabled: Record<string, boolean>;
@@ -41,7 +41,7 @@ interface MicropatchesSettings {
 
 function defaultSettings(): MicropatchesSettings {
   return {
-    enabled: Object.fromEntries(PATCHES.map((patch) => [patch.id, !DEFAULT_OFF.has(patch.id)])),
+    enabled: Object.fromEntries(PATCHES.map((patch) => [patch.id, false])),
     config: {},
   };
 }
@@ -60,7 +60,7 @@ export default class MicropatchesPlugin extends Plugin {
         id: `toggle-${patch.id}`,
         name: `Toggle ${patch.name}`,
         callback: () => {
-          const enabled = !(this.settings.enabled[patch.id] ?? true);
+          const enabled = !(this.settings.enabled[patch.id] ?? false);
           void this.setPatchEnabled(patch.id, enabled).then(() => {
             new Notice(`${patch.name}: ${enabled ? "enabled" : "disabled"}`);
           });
@@ -108,7 +108,7 @@ export default class MicropatchesPlugin extends Plugin {
 
   contextFor(id: string): PatchContext {
     return {
-      isEnabled: () => this.settings.enabled[id] ?? true,
+      isEnabled: () => this.settings.enabled[id] ?? false,
       getConfig: <T>(key: string, defaultValue: T): T => {
         const value = this.settings.config[id]?.[key];
         return value === undefined ? defaultValue : (value as T);
@@ -139,23 +139,23 @@ class MicropatchesSettingTab extends PluginSettingTab {
   }
 
   override getSettingDefinitions(): SettingDefinitionItem[] {
-    return PATCHES.map((patch): SettingDefinitionItem => {
-      const ctx = this.plugin.contextFor(patch.id);
-      const toggle: SettingGroupItem = {
-        name: patch.name,
-        desc: patch.description,
-        control: { type: "toggle", key: `${patch.id}.enabled`, defaultValue: !DEFAULT_OFF.has(patch.id) },
-      };
+    return PATCHES.map((patch) => this.getPatchSettingDefinition(patch));
+  }
 
-      const extra = patch.settingDefinitions?.(ctx, (configKey) => `${patch.id}.config.${configKey}`) ?? [];
-      if (extra.length === 0) return toggle;
+  private getPatchSettingDefinition(patch: Patch): SettingDefinitionGroup {
+    const ctx = this.plugin.contextFor(patch.id);
+    const toggle: SettingGroupItem = {
+      name: patch.name,
+      desc: patch.description,
+      control: { type: "toggle", key: `${patch.id}.enabled`, defaultValue: false },
+    };
+    const extra = patch.settingDefinitions?.(ctx, (configKey) => `${patch.id}.config.${configKey}`) ?? [];
 
-      const items: SettingGroupItem[] = [
-        toggle,
-        ...extra.map((item): SettingGroupItem => ({ ...item, visible: () => ctx.isEnabled() })),
-      ];
-      return { type: "group", items };
-    });
+    return {
+      type: "group",
+      cls: "micropatches-setting-patch",
+      items: [toggle, ...extra.map((item): SettingGroupItem => ({ ...item, visible: () => ctx.isEnabled() }))],
+    };
   }
 
   override getControlValue(key: string): unknown {

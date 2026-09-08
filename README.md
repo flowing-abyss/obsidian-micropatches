@@ -37,4 +37,10 @@ A small Obsidian plugin with targeted fixes and quality of life tweaks.
 9. Periodic note breadcrumbs
    Adds the previous and next existing period to a periodic note's breadcrumb. The muted next period creates a new note when the sequence reaches its end. Requires Periodic Notes 1.0.0 or newer.
 
-Each patch can be switched on or off separately in Settings or with its `Toggle …` command, no reload needed. Fixes are enabled by default; Instant UI and the additional highlighted-text copy option are opt-in.
+10. Backlinks defaults
+    Sets consistent collapse, context, sorting, unlinked-section, and hidden default-filter behavior for linked and unlinked mentions.
+
+11. Heading backlinks
+    Marks headings that have incoming links. Hover or activate the link indicator to see every source with context; choose a source to open its exact link in a new tab. An opt-in setting updates incoming links after you rename a heading and move the caret away, switch notes, or close the tab, with one short notice per updated link. Works in the editor and reading mode.
+
+Each patch can be switched on or off separately in Settings or with its `Toggle …` command, no reload needed. All patches are disabled by default so every change is an explicit opt-in.
