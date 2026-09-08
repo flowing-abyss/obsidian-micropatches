@@ -1,7 +1,7 @@
 {
   "id": "micropatches",
   "name": "Micropatches",
-  "version": "1.2.1",
+  "version": "1.3.0",
   "minAppVersion": "1.13.0",
   "description": "Small, targeted fixes and quality of life tweaks.",
   "author": "flowing-abyss",
