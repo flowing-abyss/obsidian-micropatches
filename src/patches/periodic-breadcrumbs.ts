@@ -22,14 +22,28 @@ interface PeriodicNoteMetadata {
   granularity: Granularity;
 }
 
+interface PeriodicNoteConfig {
+  enabled?: boolean;
+  folder?: string;
+  format?: string;
+}
+
+type PeriodicCalendarSet = { id: string } & Partial<Record<Granularity, PeriodicNoteConfig>>;
+
+interface PeriodicNotesCache {
+  cachedFiles: Map<string, Map<string, PeriodicNoteMetadata>>;
+  find(filePath: string, calendarSet?: string): PeriodicNoteMetadata | null;
+}
+
 interface PeriodicNotesApi {
   findInCache(filePath: string): PeriodicNoteMetadata | null;
-  findAdjacent(calendarSet: string, filePath: string, direction: Direction): PeriodicNoteMetadata | null | undefined;
   getPeriodicNote(granularity: Granularity, date: PeriodDate): TFile | null;
   createPeriodicNote(granularity: Granularity, date: PeriodDate): Promise<TFile>;
-  calendarSetManager?: {
-    getActiveSet(): string;
-    getFormat(granularity: Granularity): string;
+  cache: PeriodicNotesCache;
+  calendarSetManager: {
+    getActiveId?(): string;
+    getActiveSet?(): string | PeriodicCalendarSet;
+    getCalendarSets(): PeriodicCalendarSet[];
   };
 }
 
@@ -53,7 +67,7 @@ const STATE_ATTRIBUTE = "data-micropatches-periodic-breadcrumbs-state";
 
 const DEFAULT_FORMATS: Record<Granularity, string> = {
   day: "YYYY-MM-DD",
-  week: "YYYY-[W]ww",
+  week: "gggg-[W]ww",
   month: "YYYY-MM",
   quarter: "YYYY-[Q]Q",
   year: "YYYY",
@@ -75,11 +89,19 @@ function getPeriodicNotesApi(app: App): PeriodicNotesApi | null {
   const registry = (app as AppWithCommunityPlugins).plugins;
   const candidate = registry?.getPlugin("periodic-notes");
   if (!isRecord(candidate)) return null;
+  const calendarSetManager = candidate["calendarSetManager"];
+  const cache = candidate["cache"];
   if (
     typeof candidate["findInCache"] !== "function" ||
-    typeof candidate["findAdjacent"] !== "function" ||
     typeof candidate["getPeriodicNote"] !== "function" ||
-    typeof candidate["createPeriodicNote"] !== "function"
+    typeof candidate["createPeriodicNote"] !== "function" ||
+    !isRecord(cache) ||
+    typeof cache["find"] !== "function" ||
+    !(cache["cachedFiles"] instanceof Map) ||
+    !isRecord(calendarSetManager) ||
+    (typeof calendarSetManager["getActiveId"] !== "function" &&
+      typeof calendarSetManager["getActiveSet"] !== "function") ||
+    typeof calendarSetManager["getCalendarSets"] !== "function"
   ) {
     return null;
   }
@@ -95,32 +117,55 @@ function basename(path: string): string {
   return name.endsWith(".md") ? name.slice(0, -3) : name;
 }
 
+function configForMetadata(api: PeriodicNotesApi, metadata: PeriodicNoteMetadata): PeriodicNoteConfig | null {
+  const calendarSet = api.calendarSetManager.getCalendarSets().find(({ id }) => id === metadata.calendarSet);
+  return calendarSet?.[metadata.granularity] ?? null;
+}
+
+function isInConfiguredFolder(filePath: string, configuredFolder: string): boolean {
+  const folder = configuredFolder.replace(/^\/+|\/+$/g, "");
+  if (folder === "") return true;
+  const separator = filePath.lastIndexOf("/");
+  const fileFolder = separator === -1 ? "" : filePath.slice(0, separator);
+  return fileFolder === folder || fileFolder.startsWith(`${folder}/`);
+}
+
+function isConfiguredMetadata(api: PeriodicNotesApi, metadata: PeriodicNoteMetadata): boolean {
+  const config = configForMetadata(api, metadata);
+  return config?.enabled === true && isInConfiguredFolder(metadata.filePath, config.folder ?? "");
+}
+
+function activeCalendarSetId(api: PeriodicNotesApi): string | null {
+  const manager = api.calendarSetManager;
+  if (manager.getActiveId !== undefined) return manager.getActiveId();
+  const activeSet = manager.getActiveSet?.();
+  return typeof activeSet === "string" ? activeSet : (activeSet?.id ?? null);
+}
+
+function findAllConfiguredMetadata(api: PeriodicNotesApi, filePath: string): PeriodicNoteMetadata[] {
+  const calendarSets = api.calendarSetManager.getCalendarSets();
+  const activeSet = activeCalendarSetId(api);
+  const orderedSets = [
+    ...calendarSets.filter(({ id }) => id === activeSet),
+    ...calendarSets.filter(({ id }) => id !== activeSet),
+  ];
+  return orderedSets.flatMap(({ id }) => {
+    const metadata = api.cache.find(filePath, id);
+    return metadata !== null && isConfiguredMetadata(api, metadata) ? [metadata] : [];
+  });
+}
+
+function findConfiguredMetadata(api: PeriodicNotesApi, filePath: string): PeriodicNoteMetadata | null {
+  return findAllConfiguredMetadata(api, filePath)[0] ?? null;
+}
+
 function labelForDate(api: PeriodicNotesApi, metadata: PeriodicNoteMetadata, date: PeriodDate): string {
-  const format = api.calendarSetManager?.getFormat(metadata.granularity) ?? DEFAULT_FORMATS[metadata.granularity];
+  const format = configForMetadata(api, metadata)?.format || DEFAULT_FORMATS[metadata.granularity];
   return basename(date.format(format));
 }
 
 function periodName(metadata: PeriodicNoteMetadata): string {
   return PERIOD_NAMES[metadata.granularity];
-}
-
-function findExistingAdjacent(
-  app: App,
-  api: PeriodicNotesApi,
-  current: PeriodicNoteMetadata,
-  direction: Direction,
-): PeriodicNoteMetadata | null {
-  const seen = new Set([current.filePath]);
-  let cursor = current;
-  while (true) {
-    const adjacent = api.findAdjacent(cursor.calendarSet, cursor.filePath, direction) ?? null;
-    if (adjacent === null || seen.has(adjacent.filePath)) return null;
-    seen.add(adjacent.filePath);
-    if (app.vault.getFileByPath(adjacent.filePath) !== null) return adjacent;
-    // Periodic Notes 1.0.0 does not evict deleted files from its cache. Keep
-    // following its ordering while ignoring entries the vault no longer has.
-    cursor = adjacent;
-  }
 }
 
 function removeControls(view: MarkdownView): void {
@@ -167,6 +212,7 @@ export const periodicBreadcrumbs: Patch = {
     }
 
     const navigation = new WeakMap<WorkspaceLeaf, NavigationState>();
+    const configuredIndexes = new Map<string, PeriodicNoteMetadata[]>();
     const pendingLeaves = new Set<WorkspaceLeaf>();
     let refreshFrame: number | null = null;
     let refreshAllPending = false;
@@ -175,6 +221,32 @@ export const periodicBreadcrumbs: Patch = {
 
     const isCurrentNavigation = (leaf: WorkspaceLeaf, state: NavigationState): boolean =>
       !disposed && ctx.isEnabled() && state.generation === navigationGeneration && navigation.get(leaf) === state;
+
+    const findExistingAdjacent = (
+      api: PeriodicNotesApi,
+      current: PeriodicNoteMetadata,
+      direction: Direction,
+    ): PeriodicNoteMetadata | null => {
+      const key = `${current.calendarSet}\n${current.granularity}`;
+      let notes = configuredIndexes.get(key);
+      if (notes === undefined) {
+        const cachedFiles = api.cache.cachedFiles.get(current.calendarSet);
+        notes = Array.from(cachedFiles?.values() ?? [])
+          .filter(
+            (metadata) =>
+              metadata.granularity === current.granularity &&
+              isConfiguredMetadata(api, metadata) &&
+              plugin.app.vault.getFileByPath(metadata.filePath) !== null,
+          )
+          .sort(
+            (left, right) => left.date.valueOf() - right.date.valueOf() || left.filePath.localeCompare(right.filePath),
+          );
+        configuredIndexes.set(key, notes);
+      }
+      const currentIndex = notes.findIndex(({ filePath }) => filePath === current.filePath);
+      if (currentIndex === -1) return null;
+      return notes[currentIndex + (direction === "forwards" ? 1 : -1)] ?? null;
+    };
 
     const navigate = async (leaf: WorkspaceLeaf, state: NavigationState, direction: Direction): Promise<void> => {
       if (!isCurrentNavigation(leaf, state)) return;
@@ -190,17 +262,17 @@ export const periodicBreadcrumbs: Patch = {
         return;
       }
 
-      const current = api.findInCache(view.file.path);
+      const current = findConfiguredMetadata(api, view.file.path);
       if (current === null) {
         navigation.delete(leaf);
         return;
       }
 
-      const adjacent = findExistingAdjacent(plugin.app, api, current, direction);
+      const adjacent = findExistingAdjacent(api, current, direction);
       let target: TFile | null = adjacent === null ? null : plugin.app.vault.getFileByPath(adjacent.filePath);
 
       if (target === null && direction === "forwards") {
-        if (api.calendarSetManager?.getActiveSet() !== current.calendarSet) return;
+        if (activeCalendarSetId(api) !== current.calendarSet) return;
         const nextDate = shiftedDate(current, 1);
         target = api.getPeriodicNote(current.granularity, nextDate);
         if (target === null) target = await api.createPeriodicNote(current.granularity, nextDate);
@@ -215,7 +287,7 @@ export const periodicBreadcrumbs: Patch = {
       ) {
         return;
       }
-      const targetMetadata = api.findInCache(target.path);
+      const targetMetadata = findConfiguredMetadata(api, target.path);
       if (targetMetadata?.calendarSet !== current.calendarSet || targetMetadata.granularity !== current.granularity) {
         return;
       }
@@ -260,7 +332,7 @@ export const periodicBreadcrumbs: Patch = {
       }
 
       const api = getPeriodicNotesApi(plugin.app);
-      const current = api === null ? null : api.findInCache(view.file.path);
+      const current = api === null ? null : findConfiguredMetadata(api, view.file.path);
       if (api === null || current === null) {
         removeControls(view);
         return;
@@ -269,8 +341,8 @@ export const periodicBreadcrumbs: Patch = {
       const container = view.containerEl.querySelector<HTMLElement>(".view-header-title-container");
       if (container === null) return;
 
-      const previous = findExistingAdjacent(plugin.app, api, current, "backwards");
-      const next = findExistingAdjacent(plugin.app, api, current, "forwards");
+      const previous = findExistingAdjacent(api, current, "backwards");
+      const next = findExistingAdjacent(api, current, "forwards");
       const previousLabel =
         previous === null
           ? labelForDate(api, current, shiftedDate(current, -1))
@@ -278,7 +350,7 @@ export const periodicBreadcrumbs: Patch = {
       const nextLabel =
         next === null ? labelForDate(api, current, shiftedDate(current, 1)) : labelForDate(api, current, next.date);
       const kind = periodName(current);
-      const canCreate = api.calendarSetManager?.getActiveSet() === current.calendarSet;
+      const canCreate = activeCalendarSetId(api) === current.calendarSet;
       const renderState = [
         current.filePath,
         previousLabel,
@@ -351,23 +423,30 @@ export const periodicBreadcrumbs: Patch = {
       if (api === null) return;
       if (
         !(file instanceof TFile) ||
-        api.findInCache(file.path) !== null ||
-        (oldPath !== undefined && api.findInCache(oldPath) !== null)
+        findConfiguredMetadata(api, file.path) !== null ||
+        (oldPath !== undefined && findConfiguredMetadata(api, oldPath) !== null)
       ) {
+        configuredIndexes.clear();
         scheduleRefresh();
       }
     };
+    const scheduleRename = (): void => {
+      configuredIndexes.clear();
+      scheduleRefresh();
+    };
     const scheduleResolvedPeriod = (_granularity: Granularity, file: TFile): void => {
       const api = getPeriodicNotesApi(plugin.app);
-      const resolved = api?.findInCache(file.path) ?? null;
-      if (api === null || resolved === null) return;
+      if (api === null) return;
+      const resolved = findAllConfiguredMetadata(api, file.path);
+      if (resolved.length === 0) return;
+      const affectedIndexes = new Set(resolved.map(({ calendarSet, granularity }) => `${calendarSet}\n${granularity}`));
+      for (const key of affectedIndexes) configuredIndexes.delete(key);
       plugin.app.workspace.iterateAllLeaves((leaf) => {
         const view = leaf.view;
         if (!(view instanceof MarkdownView) || view.file === null) return;
-        const current = api.findInCache(view.file.path);
-        if (current?.calendarSet === resolved.calendarSet && current.granularity === resolved.granularity) {
+        const current = findConfiguredMetadata(api, view.file.path);
+        if (current !== null && affectedIndexes.has(`${current.calendarSet}\n${current.granularity}`))
           scheduleRefresh(leaf);
-        }
       });
     };
 
@@ -375,11 +454,16 @@ export const periodicBreadcrumbs: Patch = {
     plugin.registerEvent(plugin.app.workspace.on("active-leaf-change", scheduleRefresh));
     plugin.registerEvent(plugin.app.workspace.on("layout-change", () => scheduleRefresh()));
     plugin.registerEvent(plugin.app.vault.on("delete", scheduleIfPeriodic));
-    plugin.registerEvent(plugin.app.vault.on("rename", scheduleIfPeriodic));
+    plugin.registerEvent(plugin.app.vault.on("rename", scheduleRename));
 
     const customEvents = plugin.app.workspace as unknown as CustomWorkspaceEvents;
     plugin.registerEvent(customEvents.on("periodic-notes:resolve", scheduleResolvedPeriod));
-    plugin.registerEvent(customEvents.on("periodic-notes:settings-updated", () => scheduleRefresh()));
+    plugin.registerEvent(
+      customEvents.on("periodic-notes:settings-updated", () => {
+        configuredIndexes.clear();
+        scheduleRefresh();
+      }),
+    );
 
     plugin.app.workspace.onLayoutReady(() => scheduleRefresh());
     scheduleRefresh();
