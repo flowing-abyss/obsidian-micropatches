@@ -33,8 +33,7 @@ interface FootnoteDefinition {
 interface WindowState {
   style: HTMLStyleElement;
   onResize: () => void;
-  mountObserver: MutationObserver;
-  pendingMounts: Set<HTMLElement>;
+  sectionObserver: ResizeObserver;
 }
 
 interface LayoutCandidate {
@@ -682,6 +681,12 @@ function layoutRoot(
     const block = contentBlock(anchor);
     if (block === null) continue;
 
+    // A reading section can contain a whole nested list or callout. Use the
+    // reference's own paragraph/list item for its vertical position, like a
+    // .cm-line in Live Preview, but keep the section's outer margin for x/width.
+    const nearestTextBlock = anchor.closest<HTMLElement>(".cm-line, p, li, blockquote, h1, h2, h3, h4, h5, h6, td, th");
+    const textBlock = nearestTextBlock !== null && block.contains(nearestTextBlock) ? nearestTextBlock : block;
+
     const anchorRect = anchor.getBoundingClientRect();
     const blockRect = block.getBoundingClientRect();
     const available = side === "left" ? blockRect.left - viewportRect.left : viewportRect.right - blockRect.right;
@@ -689,10 +694,10 @@ function layoutRoot(
     if (width < MIN_WIDTH) continue;
 
     const targetLeft = side === "left" ? blockRect.left - distance - width : blockRect.right + distance;
-    let textTop = textTops.get(block);
+    let textTop = textTops.get(textBlock);
     if (textTop === undefined) {
-      textTop = visibleTextTop(block) ?? blockRect.top;
-      textTops.set(block, textTop);
+      textTop = visibleTextTop(textBlock) ?? textBlock.getBoundingClientRect().top;
+      textTops.set(textBlock, textTop);
     }
     const baseY = textTop - anchorRect.top;
     plans.push({ note, top: textTop, baseY, width, x: targetLeft - anchorRect.left });
@@ -1084,6 +1089,7 @@ export const footnoteSidenotes: Patch = {
     const pinnedByPane = new WeakMap<HTMLElement, Map<string, Set<string>>>();
     const parsedByPath = new Map<string, { source: string; parsed: ParsedFootnotes }>();
     const sourceByPath = new Map<string, { mtime: number; source: Promise<string> }>();
+    let disposed = false;
     let version = 0;
     const side = (): Side => {
       const value = ctx.getConfig<unknown>(SIDE_KEY, DEFAULT_SIDE);
@@ -1164,7 +1170,7 @@ export const footnoteSidenotes: Patch = {
     };
 
     const scheduleLayout = (win: Window): void => {
-      if (frames.has(win)) return;
+      if (disposed || frames.has(win)) return;
       frames.set(
         win,
         win.requestAnimationFrame(() => layoutWindow(win)),
@@ -1227,25 +1233,19 @@ export const footnoteSidenotes: Patch = {
     };
 
     const setupWindow = (win: Window): void => {
-      if (windows.has(win)) return;
+      if (disposed || windows.has(win)) return;
       const style = createHtmlElement(win.document, "style");
       style.id = STYLE_ID;
       style.textContent = CSS;
       win.document.head.appendChild(style);
       const onResize = (): void => scheduleLayout(win);
-      const pendingMounts = new Set<HTMLElement>();
-      const mountObserver = new (win.document.defaultView ?? window).MutationObserver(() => {
-        let mounted = false;
-        for (const element of pendingMounts) {
-          if (!element.isConnected) continue;
-          pendingMounts.delete(element);
-          mounted = true;
+      const sectionObserver = new (win.document.defaultView ?? window).ResizeObserver((entries) => {
+        if (ctx.isEnabled() && entries.some((entry) => entry.contentRect.width > 0 && entry.contentRect.height > 0)) {
+          scheduleLayout(win);
         }
-        if (pendingMounts.size === 0) mountObserver.disconnect();
-        if (mounted && ctx.isEnabled()) scheduleLayout(win);
       });
       win.addEventListener("resize", onResize);
-      windows.set(win, { style, onResize, mountObserver, pendingMounts });
+      windows.set(win, { style, onResize, sectionObserver });
     };
 
     const teardownWindow = (win: Window): void => {
@@ -1264,8 +1264,7 @@ export const footnoteSidenotes: Patch = {
       )) {
         note.remove();
       }
-      state.mountObserver.disconnect();
-      state.pendingMounts.clear();
+      state.sectionObserver.disconnect();
       win.removeEventListener("resize", state.onResize);
       state.style.remove();
     };
@@ -1348,7 +1347,7 @@ export const footnoteSidenotes: Patch = {
     plugin.registerEditorExtension(editorExtension);
 
     plugin.registerMarkdownPostProcessor(async (el: HTMLElement, mdCtx: MarkdownPostProcessorContext) => {
-      if (!ctx.isEnabled()) return;
+      if (disposed || !ctx.isEnabled()) return;
       const refs = Array.from(
         el.querySelectorAll<HTMLElement>(
           `sup.footnote-ref:not(.${ANCHOR_CLASS}), sup[id^="fnref-"]:not(.${ANCHOR_CLASS}), sup[data-footnote-id]:not(.${ANCHOR_CLASS})`,
@@ -1361,7 +1360,7 @@ export const footnoteSidenotes: Patch = {
       const abstractFile = plugin.app.vault.getAbstractFileByPath(mdCtx.sourcePath);
       if (!(abstractFile instanceof TFile)) return;
       const source = await readFootnoteSource(abstractFile);
-      if (!ctx.isEnabled()) return;
+      if (disposed || !ctx.isEnabled()) return;
       const { definitions, order, idsByLength, numberById } = cachedFootnotes(mdCtx.sourcePath, source);
       const rendered = new Set<string>();
       const renders: Promise<void>[] = [];
@@ -1406,6 +1405,7 @@ export const footnoteSidenotes: Patch = {
         });
       }
       await Promise.all(renders);
+      if (disposed) return;
       if (!ctx.isEnabled()) {
         for (const note of Array.from(el.querySelectorAll<HTMLElement>(`.${NOTE_CLASS}`))) note.remove();
         for (const anchor of Array.from(el.querySelectorAll<HTMLElement>(`.${ANCHOR_CLASS}`))) {
@@ -1413,30 +1413,18 @@ export const footnoteSidenotes: Patch = {
         }
         return;
       }
-      if (el.isConnected) {
-        scheduleLayout(ownerWindow);
-        return;
-      }
-
-      // Reading Mode renders distant sections off-DOM and mounts them only
-      // after postprocessors finish. One observer per window watches all such
-      // sections, avoiding one document-wide callback for every section.
+      // Reading sections may mount off-DOM or stay hidden until a mode switch.
+      // Observe their actual size so layout runs once they become measurable,
+      // and again on reflow. One observer per window only tracks footnote sections;
+      // absolutely positioned sidenotes do not resize those sections themselves.
       setupWindow(ownerWindow);
       const windowState = windows.get(ownerWindow);
       if (windowState === undefined) return;
-      windowState.pendingMounts.add(el);
-      const mountWatcher = new MarkdownRenderChild(el);
-      mountWatcher.register(() => {
-        windowState.pendingMounts.delete(el);
-        if (windowState.pendingMounts.size === 0) windowState.mountObserver.disconnect();
-      });
-      mdCtx.addChild(mountWatcher);
-      windowState.mountObserver.observe(el.ownerDocument.documentElement, { childList: true, subtree: true });
-      if (el.isConnected) {
-        windowState.pendingMounts.delete(el);
-        if (windowState.pendingMounts.size === 0) windowState.mountObserver.disconnect();
-        scheduleLayout(ownerWindow);
-      }
+      const sectionWatcher = new MarkdownRenderChild(el);
+      sectionWatcher.register(() => windowState.sectionObserver.unobserve(el));
+      mdCtx.addChild(sectionWatcher);
+      windowState.sectionObserver.observe(el);
+      if (el.isConnected) scheduleLayout(ownerWindow);
     });
 
     const refresh = (): void => {
@@ -1454,6 +1442,7 @@ export const footnoteSidenotes: Patch = {
 
     return {
       cleanup: (): void => {
+        disposed = true;
         for (const win of Array.from(windows.keys())) teardownWindow(win);
       },
       onToggle: (): void => refresh(),
