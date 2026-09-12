@@ -43,4 +43,7 @@ A small Obsidian plugin with targeted fixes and quality of life tweaks.
 11. Heading backlinks
     Marks headings that have incoming links. Hover or activate the link indicator to see every source with context; choose a source to open its exact link in a new tab. An opt-in setting updates incoming links after you rename a heading and move the caret away, switch notes, or close the tab, with one short notice per updated link. Works in the editor and reading mode.
 
+12. Outline follows viewport
+    Makes the core Outline follow the section at the center of the note in editing and reading modes, with Follow enabled automatically.
+
 Each patch can be switched on or off separately in Settings or with its `Toggle …` command, no reload needed. All patches are disabled by default so every change is an explicit opt-in.
