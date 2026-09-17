@@ -17,6 +17,7 @@ import { headingBacklinks } from "./patches/heading-backlinks";
 import { hideTrafficLights } from "./patches/hide-traffic-lights";
 import { inlineCodeCopy } from "./patches/inline-code-copy";
 import { instantUi } from "./patches/instant-ui";
+import { noteLocalGraph } from "./patches/note-local-graph";
 import { outlineViewport } from "./patches/outline-viewport";
 import { periodicBreadcrumbs } from "./patches/periodic-breadcrumbs";
 import { scrollOffset } from "./patches/scroll-offset";
@@ -34,6 +35,7 @@ const PATCHES: Patch[] = [
   headingBacklinks,
   periodicBreadcrumbs,
   outlineViewport,
+  noteLocalGraph,
 ];
 
 interface MicropatchesSettings {

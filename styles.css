@@ -415,3 +415,27 @@ body.micropatches-instant-ui *:not(:is([class*="spinner"], [class*="loading"], .
     transition: none;
   }
 }
+
+.micropatches-local-graph {
+  position: relative;
+  height: var(--micropatches-local-graph-height, 260px);
+  margin-block: var(--size-4-4, 16px);
+  border: var(--border-width, 1px) solid var(--background-modifier-border);
+  border-radius: var(--radius-m, 8px);
+  overflow: hidden;
+  contain: strict;
+}
+
+.micropatches-local-graph > .workspace-leaf-content {
+  height: 100%;
+}
+
+.micropatches-local-graph > .workspace-leaf-content > .view-header {
+  display: none;
+}
+
+/* The graph renderer disables touch scrolling on its canvas. Let vertical
+   swipes scroll the note; horizontal drags and pinches still reach the graph. */
+.is-mobile .micropatches-local-graph canvas {
+  touch-action: pan-y !important;
+}
