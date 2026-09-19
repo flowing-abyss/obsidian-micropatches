@@ -1,6 +1,6 @@
 {
   "name": "micropatches",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "description": "Small, targeted fixes and quality of life tweaks.",
   "main": "main.js",
   "type": "module",
@@ -28,7 +28,7 @@
     ]
   },
   "release": {
-    "mainJsBudgetBytes": 106496
+    "mainJsBudgetBytes": 114688
   },
   "keywords": [],
   "license": "MIT",

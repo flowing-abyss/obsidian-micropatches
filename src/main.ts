@@ -12,6 +12,7 @@ import { backlinksDefaults } from "./patches/backlinks-defaults";
 import { basesAutoSearch } from "./patches/bases-auto-search";
 import { codeBlockTitle } from "./patches/code-block-title";
 import { cursorRepeatThrottle } from "./patches/cursor-repeat-throttle";
+import { doubleTapCommands } from "./patches/double-tap-commands";
 import { footnoteSidenotes } from "./patches/footnote-sidenotes";
 import { headingBacklinks } from "./patches/heading-backlinks";
 import { hideTrafficLights } from "./patches/hide-traffic-lights";
@@ -38,6 +39,7 @@ const PATCHES: Patch[] = [
   outlineViewport,
   noteLocalGraph,
   hotCorners,
+  doubleTapCommands,
 ];
 
 interface MicropatchesSettings {

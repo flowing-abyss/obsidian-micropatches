@@ -52,4 +52,7 @@ A small Obsidian plugin with targeted fixes and quality of life tweaks.
 14. Hot corners
     Runs a command when you hold a modifier key (Shift by default) and move the mouse into a window corner. Assigned corners glow and name their command as the pointer approaches.
 
+15. Double-tap commands
+    Runs a command when you tap a modifier key (Shift, Ctrl, Alt/Option, or Cmd on macOS) twice quickly. Typing, shortcuts, and long holds never count as taps.
+
 Each patch can be switched on or off separately in Settings or with its `Toggle …` command, no reload needed. All patches are disabled by default so every change is an explicit opt-in.
