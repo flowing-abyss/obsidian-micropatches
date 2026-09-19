@@ -49,4 +49,7 @@ A small Obsidian plugin with targeted fixes and quality of life tweaks.
 13. Local graph in notes
     Shows the core Local graph below the note title or above backlinks, optionally synced with the global graph settings.
 
+14. Hot corners
+    Runs a command when you hold a modifier key (Shift by default) and move the mouse into a window corner. Assigned corners glow and name their command as the pointer approaches.
+
 Each patch can be switched on or off separately in Settings or with its `Toggle …` command, no reload needed. All patches are disabled by default so every change is an explicit opt-in.

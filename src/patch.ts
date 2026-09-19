@@ -1,4 +1,4 @@
-import type { Plugin, SettingGroupItem } from "obsidian";
+import type { App, Plugin, SettingGroupItem } from "obsidian";
 
 type Cleanup = () => void;
 
@@ -23,7 +23,8 @@ export interface Patch {
    * Optional extra settings, nested under this patch's enable toggle in the
    * declarative settings tab. `key` builds a config key namespaced to this
    * patch (e.g. key("offset") -> "scroll-offset.config.offset") for use in
-   * each item's `control.key`.
+   * each item's `control.key`. `app` is for imperative `render` rows that need
+   * live app state (e.g. a command picker).
    */
-  settingDefinitions?(ctx: PatchContext, key: (configKey: string) => string): SettingGroupItem[];
+  settingDefinitions?(ctx: PatchContext, key: (configKey: string) => string, app: App): SettingGroupItem[];
 }

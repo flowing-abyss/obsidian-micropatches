@@ -15,6 +15,7 @@ import { cursorRepeatThrottle } from "./patches/cursor-repeat-throttle";
 import { footnoteSidenotes } from "./patches/footnote-sidenotes";
 import { headingBacklinks } from "./patches/heading-backlinks";
 import { hideTrafficLights } from "./patches/hide-traffic-lights";
+import { hotCorners } from "./patches/hot-corners";
 import { inlineCodeCopy } from "./patches/inline-code-copy";
 import { instantUi } from "./patches/instant-ui";
 import { noteLocalGraph } from "./patches/note-local-graph";
@@ -36,6 +37,7 @@ const PATCHES: Patch[] = [
   periodicBreadcrumbs,
   outlineViewport,
   noteLocalGraph,
+  hotCorners,
 ];
 
 interface MicropatchesSettings {
@@ -153,7 +155,7 @@ class MicropatchesSettingTab extends PluginSettingTab {
       desc: patch.description,
       control: { type: "toggle", key: `${patch.id}.enabled`, defaultValue: false },
     };
-    const extra = patch.settingDefinitions?.(ctx, (configKey) => `${patch.id}.config.${configKey}`) ?? [];
+    const extra = patch.settingDefinitions?.(ctx, (configKey) => `${patch.id}.config.${configKey}`, this.app) ?? [];
 
     return {
       type: "group",
