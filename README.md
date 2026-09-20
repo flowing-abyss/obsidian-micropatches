@@ -55,4 +55,7 @@ A small Obsidian plugin with targeted fixes and quality of life tweaks.
 15. Double-tap commands
     Runs a command when you tap a modifier key (Shift, Ctrl, Alt/Option, or Cmd on macOS) twice quickly. Typing, shortcuts, and long holds never count as taps.
 
+16. Focus mode command
+    Adds an `Enter or exit focus mode` command that hides everything except the active note's text and title, keeps it hidden until you exit, and dims all lines but the current one. Changes no settings; always off after a restart.
+
 Each patch can be switched on or off separately in Settings or with its `Toggle …` command, no reload needed. All patches are disabled by default so every change is an explicit opt-in.

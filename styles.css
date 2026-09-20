@@ -599,3 +599,53 @@ body.micropatches-instant-ui *:not(:is([class*="spinner"], [class*="loading"], .
   bottom: 0;
   --micropatches-hot-corner-at: bottom right;
 }
+
+/* Focus mode: an allowlist, not a blocklist. Nothing here depends on what the
+   user (or another plugin) has enabled: whole regions are hidden and only the
+   focused note's text and inline title stay. !important is what keeps the
+   panels from coming back while the mode is on. */
+body.micropatches-focus-mode
+  :is(
+    .status-bar,
+    .workspace-ribbon,
+    .sidebar-toggle-button,
+    .workspace-tab-header-container,
+    .view-header,
+    .workspace-split.mod-left-split,
+    .workspace-split.mod-right-split,
+    .workspace-drawer,
+    .workspace-leaf-resize-handle
+  ) {
+  display: none !important;
+}
+
+/* Only the focused note: other tab groups, the splits that hold none of it,
+   and (stacked tabs) its sibling leaves. Guarded by :has() so a window that
+   somehow has no target never goes blank. */
+body.micropatches-focus-mode:has(.micropatches-focus-tabs)
+  .workspace-split.mod-root
+  :is(.workspace-tabs:not(.micropatches-focus-tabs), .workspace-split:not(:has(.micropatches-focus-tabs))),
+body.micropatches-focus-mode .micropatches-focus-tabs .workspace-leaf:not(.micropatches-focus-leaf),
+body.micropatches-focus-mode .micropatches-focus-tabs .workspace-tab-container > .workspace-tab-header {
+  display: none !important;
+}
+
+/* Everything around the text — properties, backlinks and whatever plugins
+   append next to them — except the inline title. */
+body.micropatches-focus-mode .micropatches-focus-leaf .cm-sizer > :not(.cm-contentContainer, .inline-title),
+body.micropatches-focus-mode .micropatches-focus-leaf .markdown-preview-sizer > .mod-footer,
+body.micropatches-focus-mode .micropatches-focus-leaf .markdown-preview-sizer > .mod-header > :not(.inline-title) {
+  display: none !important;
+}
+
+body.micropatches-focus-mode .micropatches-focus-leaf .markdown-source-view.mod-cm6 .cm-content > * {
+  transition: opacity 0.2s ease;
+}
+
+body.micropatches-focus-mode
+  .micropatches-focus-leaf
+  .markdown-source-view.mod-cm6
+  .cm-content
+  > :not(.cm-active, :focus-within) {
+  opacity: 0.35;
+}
