@@ -16,8 +16,8 @@ A small Obsidian plugin with targeted fixes and quality of life tweaks.
 2. Scroll offset
    Keeps a minimum distance between the cursor and the top or bottom edge of the editor. Percentage or fixed pixels, both configurable.
 
-3. Hide traffic lights, macOS only
-   Hides the native window buttons through Electron's window API and removes the reserved tab bar space, for every open desktop window.
+3. Hide traffic lights
+   Hides the window buttons (macOS traffic lights, or minimize, maximize and close on Windows and Linux) and removes the reserved tab bar space, for every open desktop window.
 
 4. Bases auto search
    Opens the search bar the first time a Bases view is shown.

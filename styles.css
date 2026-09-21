@@ -8,6 +8,28 @@ body.micropatches-hide-traffic-lights.mod-macos:not(.is-fullscreen)
   padding-left: var(--size-4-2, 8px);
 }
 
+/* Windows/Linux: the controls are Obsidian's own DOM, only floating over the
+   tab bar in the "Hidden" frame style. Wherever Obsidian brings the full
+   titlebar back (vault picker, popout modals, global progress) they stay. */
+body.micropatches-hide-traffic-lights:is(.mod-windows, .mod-linux).is-hidden-frameless:not(
+    .is-fullscreen,
+    .starter,
+    .is-popout-modal,
+    .in-progress
+  ) {
+  --frame-right-space: 0px;
+}
+
+body.micropatches-hide-traffic-lights:is(.mod-windows, .mod-linux).is-hidden-frameless:not(
+    .is-fullscreen,
+    .starter,
+    .is-popout-modal,
+    .in-progress
+  )
+  .titlebar-button-container.mod-right {
+  display: none;
+}
+
 /* Every patch is one native settings group. The consistent group spacing
    separates patches; indentation alone communicates child settings. */
 .micropatches-setting-patch > .setting-items > .setting-item:first-child > .setting-item-info > .setting-item-name {

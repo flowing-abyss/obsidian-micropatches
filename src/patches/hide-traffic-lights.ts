@@ -31,12 +31,18 @@ const BODY_CLASS = "micropatches-hide-traffic-lights";
  * old off-screen-position technique on older Electron versions) and removes
  * the reserved space (styles.css, scoped to a body class we toggle per
  * window), for every open window (main window + popouts).
+ *
+ * On Windows and Linux there is nothing native to hide: with the "Hidden"
+ * window frame style Obsidian draws minimize/maximize/close itself, as plain
+ * DOM (.titlebar-button-container.mod-right) floating over the tab bar, and
+ * reserves --frame-right-space for them. There the body class alone does the
+ * job (styles.css); no Electron access is needed.
  */
 export const hideTrafficLights: Patch = {
   id: "hide-traffic-lights",
   name: "Hide traffic lights (macOS)",
   description:
-    "Moves the native macOS traffic-light window controls off-screen and removes the reserved tab-bar space, for every open window.",
+    "Hides the window controls (macOS traffic lights, or minimize/maximize/close on Windows and Linux with the hidden window frame) and removes the reserved tab-bar space, for every open window.",
 
   register(plugin: Plugin, ctx: PatchContext): PatchHandle {
     // Mobile emulation on macOS still reports isMacOS=true, but its renderer
@@ -45,9 +51,13 @@ export const hideTrafficLights: Patch = {
     // lights or reserved desktop title-bar space. Guard the capability before
     // touching require(), otherwise every mobile layout change produces an
     // Obsidian security notice and a console error.
-    if (!Platform.isMacOS || !Platform.isDesktopApp || Platform.isMobile) {
+    if (!Platform.isDesktopApp || Platform.isMobile) {
       return { cleanup: (): void => {} };
     }
+
+    // Only macOS has native controls to drive through Electron; elsewhere the
+    // controls are DOM and the body class is the whole patch.
+    const hasNativeControls = Platform.isMacOS;
 
     const windows = new Map<Window, WindowState>();
     let warnedRemoteUnavailable = false;
@@ -67,6 +77,7 @@ export const hideTrafficLights: Patch = {
     // stay put while the space collapses and they end up overlapping the
     // first tab.
     const hideFor = (win: Window): boolean => {
+      if (!hasNativeControls) return true;
       try {
         const bw = getBrowserWindow(win);
         if (!bw) {
@@ -93,6 +104,7 @@ export const hideTrafficLights: Patch = {
     };
 
     const restoreFor = (win: Window): void => {
+      if (!hasNativeControls) return;
       try {
         const bw = getBrowserWindow(win);
         bw?.setWindowButtonPosition?.(null);
