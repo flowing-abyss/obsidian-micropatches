@@ -10,8 +10,9 @@ interface OutlineView {
   onToggleFollowCursor(): void;
 }
 
+// Checked section by section: any missing field falls back to native tracking.
 interface PreviewSection {
-  start: { line: number };
+  start?: { line: number };
   lines: number;
   height: number;
   computed: boolean;
@@ -24,8 +25,8 @@ interface PreviewRenderer {
   sections: PreviewSection[];
 }
 
-function isOutline(value: unknown): value is OutlineView {
-  if (!value || typeof value !== "object") return false;
+export function isOutline(value: unknown): value is OutlineView {
+  if (typeof value !== "object" || value === null) return false;
   const view = value as Partial<OutlineView>;
   return (
     typeof view.findActiveHeading === "function" &&
@@ -39,12 +40,11 @@ function isOutline(value: unknown): value is OutlineView {
 // Reading mode virtualizes its DOM too. Use the renderer's measured sections,
 // including offscreen ones, and skip folded content. Keep this private API
 // boundary guarded so incompatible versions fall back to native tracking.
-function readingLine(view: MarkdownView): number | null {
+export function readingLine(view: MarkdownView): number | null {
   const renderer = (view.previewMode as unknown as { renderer?: Partial<PreviewRenderer> }).renderer;
-  if (!renderer || !renderer.previewEl || typeof renderer.topSpace !== "number" || !Array.isArray(renderer.sections))
-    return null;
+  if (!renderer?.previewEl || typeof renderer.topSpace !== "number" || !Array.isArray(renderer.sections)) return null;
   const { previewEl, sections } = renderer;
-  if (!previewEl.clientHeight) return null;
+  if (previewEl.clientHeight === 0) return null;
   const target = previewEl.scrollTop + previewEl.clientHeight / 2;
   let top = renderer.topSpace;
   let line = 0;

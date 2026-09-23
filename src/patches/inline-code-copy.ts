@@ -26,9 +26,19 @@ interface FeedbackTimer {
   win: Window;
 }
 
-function inlineCodeTarget(target: Element): CopyTarget | null {
+// The element beside `from`, past only empty nodes such as widgets for
+// hidden syntax; null if visible text comes first.
+function adjacentElement(from: Element, direction: "previous" | "next"): Element | null {
+  let node: ChildNode | null = direction === "previous" ? from.previousSibling : from.nextSibling;
+  while (node !== null && node.textContent === "") {
+    node = direction === "previous" ? node.previousSibling : node.nextSibling;
+  }
+  return node?.nodeType === Node.ELEMENT_NODE ? (node as Element) : null;
+}
+
+export function inlineCodeTarget(target: Element): CopyTarget | null {
   const readingCode = target.closest(READING_CODE_SELECTOR);
-  if (readingCode !== null) return { text: readingCode.textContent ?? "", elements: [readingCode] };
+  if (readingCode !== null) return { text: readingCode.textContent, elements: [readingCode] };
 
   const segment = target.closest(EDITOR_CODE_SELECTOR);
   if (segment === null) return null;
@@ -36,26 +46,26 @@ function inlineCodeTarget(target: Element): CopyTarget | null {
   // With the cursor inside inline code, CodeMirror exposes each backtick as
   // its own formatting span. Clicking either marker should still copy the
   // content between them, never the Markdown delimiters themselves.
+  // Only right beside it: the code before may have its backticks hidden,
+  // with just a space between.
   const content = segment.classList.contains("cm-formatting-code")
-    ? [segment.previousElementSibling, segment.nextElementSibling].find((sibling) =>
-        sibling?.matches(EDITOR_CONTENT_SELECTOR),
+    ? [adjacentElement(segment, "previous"), adjacentElement(segment, "next")].find(
+        (sibling) => sibling?.matches(EDITOR_CONTENT_SELECTOR) === true,
       )
     : segment;
   if (content === undefined || content === null) return null;
 
   const elements = [content];
-  if (content.previousElementSibling?.matches(".cm-formatting-code.cm-inline-code")) {
-    elements.unshift(content.previousElementSibling);
-  }
-  if (content.nextElementSibling?.matches(".cm-formatting-code.cm-inline-code")) {
-    elements.push(content.nextElementSibling);
-  }
-  return { text: content.textContent ?? "", elements };
+  const opening = adjacentElement(content, "previous");
+  if (opening?.matches(".cm-formatting-code.cm-inline-code") === true) elements.unshift(opening);
+  const closing = adjacentElement(content, "next");
+  if (closing?.matches(".cm-formatting-code.cm-inline-code") === true) elements.push(closing);
+  return { text: content.textContent, elements };
 }
 
-function highlightedTarget(target: Element): CopyTarget | null {
+export function highlightedTarget(target: Element): CopyTarget | null {
   const readingHighlight = target.closest(READING_HIGHLIGHT_SELECTOR);
-  if (readingHighlight !== null) return { text: readingHighlight.textContent ?? "", elements: [readingHighlight] };
+  if (readingHighlight !== null) return { text: readingHighlight.textContent, elements: [readingHighlight] };
 
   const segment = target.closest(EDITOR_HIGHLIGHT_SELECTOR);
   if (segment === null) return null;
@@ -65,13 +75,8 @@ function highlightedTarget(target: Element): CopyTarget | null {
   // across only those invisible bridges, then concatenate semantic content
   // spans while excluding every revealed formatting marker (`==`, `**`, …).
   const adjacentHighlight = (from: Element, direction: "previous" | "next"): Element | null => {
-    let node: ChildNode | null = direction === "previous" ? from.previousSibling : from.nextSibling;
-    while (node !== null && node.textContent === "") {
-      node = direction === "previous" ? node.previousSibling : node.nextSibling;
-    }
-    return node?.nodeType === Node.ELEMENT_NODE && (node as Element).matches(".cm-highlight")
-      ? (node as Element)
-      : null;
+    const el = adjacentElement(from, direction);
+    return el?.matches(".cm-highlight") === true ? el : null;
   };
 
   let first = segment;
@@ -84,7 +89,7 @@ function highlightedTarget(target: Element): CopyTarget | null {
   const elements: Element[] = [];
   for (let part: Element | null = first; part !== null; part = adjacentHighlight(part, "next")) {
     elements.push(part);
-    if (!part.classList.contains("cm-formatting")) text += part.textContent ?? "";
+    if (!part.classList.contains("cm-formatting")) text += part.textContent;
   }
   return { text, elements };
 }
@@ -154,16 +159,15 @@ export const inlineCodeCopy: Patch = {
         const copyTarget = inlineCodeTarget(target) ?? (copyHighlights() ? highlightedTarget(target) : null);
         if (copyTarget === null) return;
 
-        void (async (): Promise<void> => {
-          try {
-            const clipboard = win.navigator.clipboard;
-            if (clipboard?.writeText === undefined) throw new Error("Clipboard API is unavailable");
-            await clipboard.writeText(copyTarget.text);
-            showCopyFeedback(win, copyTarget.elements);
-          } catch (error) {
-            console.error("Micropatches (inline-code-copy): clipboard write failed", error);
-          }
-        })();
+        const copy = async (): Promise<void> => {
+          const clipboard = win.navigator.clipboard as Clipboard | undefined;
+          if (typeof clipboard?.writeText !== "function") throw new Error("Clipboard API is unavailable");
+          await clipboard.writeText(copyTarget.text);
+          showCopyFeedback(win, copyTarget.elements);
+        };
+        copy().catch((error: unknown) => {
+          console.error("Micropatches (inline-code-copy): clipboard write failed", error);
+        });
       };
 
       windows.set(win, { onClick });
@@ -179,13 +183,21 @@ export const inlineCodeCopy: Patch = {
       try {
         clearCopyFeedback(win);
         win.document.removeEventListener("click", state.onClick);
-        win.document.body?.classList.remove(INLINE_CODE_BODY_CLASS, HIGHLIGHT_BODY_CLASS);
+        (win.document.body as HTMLElement | null)?.classList.remove(INLINE_CODE_BODY_CLASS, HIGHLIGHT_BODY_CLASS);
       } catch (error) {
         console.error("Micropatches (inline-code-copy): teardown cleanup failed", error);
       }
     };
 
     setupWindow(window);
+    // Popouts that were open before this loaded (the plugin enabled later)
+    // fire no "window-open". Once unloaded, not even the main window is set up.
+    plugin.app.workspace.onLayoutReady(() => {
+      if (!windows.has(window)) return;
+      plugin.app.workspace.iterateAllLeaves((leaf) => {
+        setupWindow(leaf.view.containerEl.win);
+      });
+    });
     plugin.registerEvent(
       plugin.app.workspace.on("window-open", (_workspaceWindow, win) => {
         setupWindow(win);
@@ -201,7 +213,9 @@ export const inlineCodeCopy: Patch = {
       cleanup: (): void => {
         for (const win of Array.from(windows.keys())) teardownWindow(win);
       },
-      onToggle: (): void => applyAll(),
+      onToggle: (): void => {
+        applyAll();
+      },
       onConfigChange: (key: string): void => {
         if (key === COPY_HIGHLIGHTS_KEY) applyAll();
       },

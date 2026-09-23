@@ -118,11 +118,11 @@ const AUTO_RENAME_CONFIG = "autoRenameLinks";
 const LINK_NOTICE_DURATION_MS = 1600;
 const MAX_VISIBLE_LINK_NOTICES = 3;
 
-function isHeadingSubpath(subpath: string): boolean {
+export function isHeadingSubpath(subpath: string): boolean {
   return subpath.startsWith("#") && !subpath.startsWith("#^");
 }
 
-function sourceReferences(cache: CachedMetadata): PositionedReference[] {
+export function sourceReferences(cache: CachedMetadata): PositionedReference[] {
   const references: PositionedReference[] = [...(cache.links ?? []), ...(cache.embeds ?? [])].map((reference) => ({
     ...reference,
     originalOrdinal: 0,
@@ -158,22 +158,22 @@ function sourceParentPath(path: string): string {
   return separator === -1 ? "" : path.slice(0, separator);
 }
 
-function compareSources(left: HeadingBacklinkSource, right: HeadingBacklinkSource): number {
-  return (
-    left.sourceFileName.localeCompare(right.sourceFileName) ||
-    left.sourceFilePath.localeCompare(right.sourceFilePath) ||
-    left.lineNumber - right.lineNumber ||
-    left.columnNumber - right.columnNumber
-  );
+export function compareSources(left: HeadingBacklinkSource, right: HeadingBacklinkSource): number {
+  const byName = left.sourceFileName.localeCompare(right.sourceFileName);
+  if (byName !== 0) return byName;
+  const byPath = left.sourceFilePath.localeCompare(right.sourceFilePath);
+  if (byPath !== 0) return byPath;
+  if (left.lineNumber !== right.lineNumber) return left.lineNumber - right.lineNumber;
+  return left.columnNumber - right.columnNumber;
 }
 
-function headingSignature(cache: CachedMetadata | null): string {
+export function headingSignature(cache: CachedMetadata | null): string {
   return (cache?.headings ?? [])
     .map(({ heading, level, position }) => `${String(level)}\u0000${String(position.start.line)}\u0000${heading}`)
     .join("\u0001");
 }
 
-function buildReferencePreview(source: string, startOffset: number, endOffset: number): string {
+export function buildReferencePreview(source: string, startOffset: number, endOffset: number): string {
   const lineStart = source.lastIndexOf("\n", Math.max(0, startOffset - 1)) + 1;
   const nextLineBreak = source.indexOf("\n", endOffset);
   const lineEnd = nextLineBreak === -1 ? source.length : nextLineBreak;
@@ -186,7 +186,7 @@ function buildReferencePreview(source: string, startOffset: number, endOffset: n
   return `${preview.slice(0, PREVIEW_MAX_CHARS - 1).trimEnd()}…`;
 }
 
-function refineApproximatePosition(text: string, source: HeadingBacklinkSource): void {
+export function refineApproximatePosition(text: string, source: HeadingBacklinkSource): void {
   if (!source.positionIsApproximate || source.originalText === "") return;
   let matchOffset = Math.max(0, source.startOffset);
   for (let ordinal = 0; ordinal <= source.originalOrdinal; ordinal++) {
@@ -207,21 +207,34 @@ function refineApproximatePosition(text: string, source: HeadingBacklinkSource):
   source.positionIsApproximate = false;
 }
 
-function normalizedHeading(heading: string): string {
+export function normalizedHeading(heading: string): string {
   return stripHeading(heading).toLocaleLowerCase();
 }
 
-function markdownHeading(line: string): { heading: string; level: number } | null {
-  const match = /^ {0,3}(#{1,6})[\t ]+(.*)$/u.exec(line);
+// Drops an ATX closing sequence ("## Title ##"); a loop, as a regex
+// anchored only at the end backtracks.
+export function withoutClosingHashes(text: string): string {
+  let end = text.length;
+  while (end > 0 && (text[end - 1] === " " || text[end - 1] === "\t")) end--;
+  const hashesEnd = end;
+  while (end > 0 && text[end - 1] === "#") end--;
+  const spaced = end > 0 && (text[end - 1] === " " || text[end - 1] === "\t");
+  return end < hashesEnd && spaced ? text.slice(0, end) : text;
+}
+
+export function markdownHeading(line: string): { heading: string; level: number } | null {
+  // The heading may not start with a space, so a failed match doesn't
+  // backtrack through the spaces after the hashes.
+  const match = /^ {0,3}(#{1,6})[\t ]+((?![\t ]).*)$/u.exec(line);
   if (match === null) return null;
   const hashes = match[1];
   const rawHeading = match[2];
   if (hashes === undefined || rawHeading === undefined) return null;
-  const heading = stripHeading(rawHeading.replace(/[\t ]+#+[\t ]*$/u, "").trim());
+  const heading = stripHeading(withoutClosingHashes(rawHeading).trim());
   return heading === "" ? null : { heading, level: hashes.length };
 }
 
-function documentHeading(doc: Text, lineNumber: number): { heading: string; level: number } | null {
+export function documentHeading(doc: Text, lineNumber: number): { heading: string; level: number } | null {
   const line = doc.line(lineNumber);
   const atx = markdownHeading(line.text);
   if (atx !== null) return atx;
@@ -252,7 +265,7 @@ function referenceOccurrences(
   return occurrences;
 }
 
-function locateReference(
+export function locateReference(
   text: string,
   reference: PositionedReference,
   occurrenceCache: Map<string, number[]>,
@@ -287,7 +300,7 @@ function locateReference(
   return closest === null ? null : { from: closest, to: closest + reference.original.length };
 }
 
-function rewriteReferenceHeading(original: string, heading: string): string | null {
+export function rewriteReferenceHeading(original: string, heading: string): string | null {
   const linkHeading = stripHeadingForLink(heading);
   const wikiStart = original.indexOf("[[");
   if (wikiStart !== -1) {
@@ -304,7 +317,8 @@ function rewriteReferenceHeading(original: string, heading: string): string | nu
   if (destinationMarker === -1) return null;
   let destinationStart = destinationMarker + 2;
   let destinationEnd: number;
-  if (original[destinationStart] === "<") {
+  const bracketed = original[destinationStart] === "<";
+  if (bracketed) {
     destinationStart++;
     destinationEnd = original.indexOf(">", destinationStart);
     if (destinationEnd === -1) return null;
@@ -339,7 +353,9 @@ function rewriteReferenceHeading(original: string, heading: string): string | nu
   const hash = destination.indexOf("#");
   if (hash === -1) return null;
   const previousFragment = destination.slice(hash + 1);
-  const nextFragment = /%[\dA-Fa-f]{2}/u.test(previousFragment) ? encodeURIComponent(linkHeading) : linkHeading;
+  // A bare destination ends at the first space, so spaces must be encoded there.
+  const encode = /%[\dA-Fa-f]{2}/u.test(previousFragment) || (!bracketed && /\s/u.test(linkHeading));
+  const nextFragment = encode ? encodeURIComponent(linkHeading) : linkHeading;
   const rewrittenDestination = `${destination.slice(0, hash + 1)}${nextFragment}`;
   return `${original.slice(0, destinationStart)}${rewrittenDestination}${original.slice(destinationEnd)}`;
 }
@@ -613,7 +629,11 @@ async function openSource(app: App, source: HeadingBacklinkSource): Promise<void
   app.workspace.setActiveLeaf(leaf, { focus: true });
   const win = leaf.view.containerEl.ownerDocument.defaultView ?? window;
   await new Promise<void>((resolve) => {
-    win.requestAnimationFrame(() => win.requestAnimationFrame(() => resolve()));
+    win.requestAnimationFrame(() =>
+      win.requestAnimationFrame(() => {
+        resolve();
+      }),
+    );
   });
   const view = leaf.view;
   if (view instanceof MarkdownView && view.getMode() === "source") {
@@ -683,9 +703,15 @@ class BacklinkPopover {
     popover.className = `popover hover-popover ${POPOVER_CLASS}`;
     popover.setAttribute("role", "dialog");
     popover.setAttribute("aria-label", "Links to this heading");
-    popover.addEventListener("pointerenter", () => this.cancelClose());
-    popover.addEventListener("pointerleave", () => this.scheduleClose());
-    popover.addEventListener("focusin", () => this.cancelClose());
+    popover.addEventListener("pointerenter", () => {
+      this.cancelClose();
+    });
+    popover.addEventListener("pointerleave", () => {
+      this.scheduleClose();
+    });
+    popover.addEventListener("focusin", () => {
+      this.cancelClose();
+    });
     popover.addEventListener("focusout", (event) => {
       const relatedTarget = event.relatedTarget;
       if (relatedTarget === null || !("nodeType" in relatedTarget) || !popover.contains(relatedTarget as Node)) {
@@ -828,14 +854,16 @@ class BacklinkPopover {
         event.preventDefault();
         event.stopPropagation();
         this.close();
-        void (async (): Promise<void> => {
+        (async (): Promise<void> => {
           try {
             await this.resolver.loadPreviews([source], () => true);
           } catch (error: unknown) {
             console.error("Micropatches (heading-backlinks): locating source link failed", error);
           }
           await openSource(this.app, source);
-        })();
+        })().catch((error: unknown) => {
+          console.error("Micropatches (heading-backlinks): opening source failed", error);
+        });
       });
 
       const file = createOwnedElement(doc, "span");
@@ -850,10 +878,11 @@ class BacklinkPopover {
         createTextElement(doc, "span", POPOVER_PATH_CLASS, parentPath === "" ? "" : ` · ${parentPath}`),
         createTextElement(doc, "span", POPOVER_LINE_CLASS, `:${String(source.lineNumber + 1)}`),
       );
+      const emptyClass = source.previewText === "" ? ` ${POPOVER_EMPTY_PREVIEW_CLASS}` : "";
       const preview = createTextElement(
         doc,
         "span",
-        `${POPOVER_PREVIEW_CLASS}${source.previewText === "" ? ` ${POPOVER_EMPTY_PREVIEW_CLASS}` : ""}`,
+        `${POPOVER_PREVIEW_CLASS}${emptyClass}`,
         source.previewText === "" ? "Loading context…" : source.previewText,
       );
       item.append(file, preview);
@@ -1089,7 +1118,7 @@ function readingHeadingLine(
   }
   if (direct !== undefined && !usedLines.has(direct.position.start.line)) return direct.position.start.line;
 
-  const renderedHeading = headingEl.dataset["heading"] ?? headingEl.textContent ?? "";
+  const renderedHeading = headingEl.dataset["heading"] ?? headingEl.textContent;
   const normalized = stripHeading(renderedHeading);
   const fallback = headings.find(
     (heading) =>
@@ -1305,6 +1334,7 @@ export const headingBacklinks: Patch = {
 
     const headingMatchesRename = (rename: PendingHeadingRename): boolean => {
       if (rename.newHeading === null || rename.newLevel === null) return false;
+      const level = rename.newLevel;
       const target = plugin.app.vault.getFileByPath(rename.targetPath);
       if (target === null) return false;
       const headings = plugin.app.metadataCache.getFileCache(target)?.headings ?? [];
@@ -1317,10 +1347,7 @@ export const headingBacklinks: Patch = {
       }, null);
       return [ordinalMatch, closest].some(
         (heading) =>
-          heading !== undefined &&
-          heading !== null &&
-          heading.level === rename.newLevel &&
-          stripHeading(heading.heading) === stripHeading(rename.newHeading ?? ""),
+          heading?.level === level && stripHeading(heading.heading) === stripHeading(rename.newHeading ?? ""),
       );
     };
 
@@ -1538,7 +1565,9 @@ export const headingBacklinks: Patch = {
       }
       rename.expectedLinks = expectedLinks;
       queuedRenames.set(rename.targetPath, { rename, previousHeadings, sourcePaths, generation, startedWrites: false });
-      void runRenameWorker();
+      runRenameWorker().catch((error: unknown) => {
+        console.error("Micropatches (heading-backlinks): renaming heading links failed", error);
+      });
     };
 
     const renameSources = (
@@ -1648,8 +1677,7 @@ export const headingBacklinks: Patch = {
         const line = view.state.doc.line(lineNumber);
         const currentHeading = documentHeading(view.state.doc, lineNumber);
         if (
-          currentHeading === null ||
-          currentHeading.level !== cachedHeading.level ||
+          currentHeading?.level !== cachedHeading.level ||
           normalizedHeading(currentHeading.heading) !== normalizedHeading(cachedHeading.heading)
         ) {
           continue;
@@ -1761,7 +1789,8 @@ export const headingBacklinks: Patch = {
             }
             for (let lineNumber = firstLine; lineNumber <= lastLine; lineNumber++) changedLines.add(lineNumber);
           });
-          if (tooLarge || changedLines.size === 0) return;
+          // Too large a change leaves no lines.
+          if (changedLines.size === 0) return;
 
           const selectionLine = update.startState.doc.lineAt(update.startState.selection.main.head).number;
           const orderedLines = Array.from(changedLines).sort(

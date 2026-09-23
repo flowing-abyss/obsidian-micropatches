@@ -31,8 +31,16 @@ export const basesAutoSearch: Patch = {
       }
     };
 
-    plugin.registerEvent(plugin.app.workspace.on("layout-change", () => openSearch()));
-    plugin.registerEvent(plugin.app.workspace.on("active-leaf-change", () => openSearch()));
+    plugin.registerEvent(
+      plugin.app.workspace.on("layout-change", () => {
+        openSearch();
+      }),
+    );
+    plugin.registerEvent(
+      plugin.app.workspace.on("active-leaf-change", () => {
+        openSearch();
+      }),
+    );
 
     return { cleanup: (): void => {} };
   },

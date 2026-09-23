@@ -32,8 +32,8 @@ interface WindowState {
 // A tap is a press shorter than TAP_MAX_MS; the second tap must start within
 // DOUBLE_TAP_GAP_MS of the first one ending. Longer presses are holds (e.g.
 // Shift held for Hot corners or a selection), not taps.
-const TAP_MAX_MS = 250;
-const DOUBLE_TAP_GAP_MS = 350;
+export const TAP_MAX_MS = 250;
+export const DOUBLE_TAP_GAP_MS = 350;
 
 const MODIFIERS: Record<string, Modifier> = {
   Shift: "shift",
@@ -60,7 +60,7 @@ function otherModifierHeld(event: KeyboardEvent, modifier: Modifier): boolean {
 class CommandSuggestModal extends FuzzySuggestModal<CommandLike | null> {
   // getItems() runs on every keystroke; the modal is short-lived, so the
   // sorted list is built once.
-  private readonly items: (CommandLike | null)[];
+  private readonly items: Array<CommandLike | null>;
 
   constructor(
     app: AppWithCommands,
@@ -72,7 +72,7 @@ class CommandSuggestModal extends FuzzySuggestModal<CommandLike | null> {
     this.setPlaceholder(`Choose a command for double ${modifierName}…`);
   }
 
-  override getItems(): (CommandLike | null)[] {
+  override getItems(): Array<CommandLike | null> {
     return this.items;
   }
 
@@ -109,7 +109,7 @@ export const doubleTapCommands: Patch = {
 
     const run = (modifier: Modifier): void => {
       const commandId = ctx.getConfig<string>(modifier, "");
-      if (!commandId) return;
+      if (commandId === "") return;
       if (!app.commands.commands[commandId]) {
         new Notice(`Micropatches: double-tap command "${commandId}" not found.`);
         return;
@@ -191,6 +191,14 @@ export const doubleTapCommands: Patch = {
     };
 
     setupWindow(window);
+    // Popouts that were open before this loaded (the plugin enabled later)
+    // fire no "window-open". Once unloaded, not even the main window is set up.
+    plugin.app.workspace.onLayoutReady(() => {
+      if (!windows.has(window)) return;
+      plugin.app.workspace.iterateAllLeaves((leaf) => {
+        setupWindow(leaf.view.containerEl.win);
+      });
+    });
     plugin.registerEvent(
       plugin.app.workspace.on("window-open", (_workspaceWindow, win) => {
         setupWindow(win);
@@ -215,14 +223,14 @@ export const doubleTapCommands: Patch = {
   settingDefinitions(ctx: PatchContext, _key: (configKey: string) => string, app: App): SettingGroupItem[] {
     const commands = (app as AppWithCommands).commands;
 
-    return (Object.entries(MODIFIER_NAMES) as [Modifier, string][]).map(
+    return (Object.entries(MODIFIER_NAMES) as Array<[Modifier, string]>).map(
       ([modifier, modifierName]): SettingGroupItem => ({
         name: `Double ${modifierName}`,
         desc: "Command to run.",
         render: (setting): void => {
           const label = (): string => {
             const id = ctx.getConfig<string>(modifier, "");
-            return id ? (commands.commands[id]?.name ?? `Missing: ${id}`) : "Choose command…";
+            return id !== "" ? (commands.commands[id]?.name ?? `Missing: ${id}`) : "Choose command…";
           };
           // Components are thenables (BaseComponent.then), so a promise
           // callback must never return one: resolving a promise with the
@@ -232,13 +240,21 @@ export const doubleTapCommands: Patch = {
             await ctx.setConfig(modifier, commandId);
             button.setButtonText(label());
           };
+          const save = (button: ButtonComponent, commandId: string): void => {
+            assign(button, commandId).catch((error: unknown) => {
+              console.error("Micropatches (double-tap-commands): saving the command failed", error);
+            });
+          };
+          const choose = (button: ButtonComponent): void => {
+            new CommandSuggestModal(app as AppWithCommands, modifierName, (command) => {
+              save(button, command?.id ?? "");
+            }).open();
+          };
           let commandButton: ButtonComponent | undefined;
           setting.addButton((button) => {
             commandButton = button;
             button.setButtonText(label()).onClick(() => {
-              new CommandSuggestModal(app as AppWithCommands, modifierName, (command) => {
-                void assign(button, command?.id ?? "");
-              }).open();
+              choose(button);
             });
           });
           setting.addExtraButton((clear) => {
@@ -246,7 +262,7 @@ export const doubleTapCommands: Patch = {
               .setIcon("x")
               .setTooltip("Clear")
               .onClick(() => {
-                if (commandButton) void assign(commandButton, "");
+                if (commandButton) save(commandButton, "");
               });
           });
         },

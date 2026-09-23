@@ -15,6 +15,9 @@ main.js
 # Exclude sourcemaps
 *.map
 
+# vitest
+coverage
+
 # obsidian
 data.json
 
@@ -38,6 +41,4 @@ data.json
 .zed/
 
 /.mcp.json
-/AGENTS.md
-CLAUDE.md
 /opencode.json

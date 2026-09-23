@@ -1,5 +1,5 @@
 import { EditorSelection, Prec } from "@codemirror/state";
-import { EditorView, ViewPlugin } from "@codemirror/view";
+import { type EditorView, ViewPlugin } from "@codemirror/view";
 import type { Plugin } from "obsidian";
 import type { Patch, PatchContext, PatchHandle } from "../patch";
 
@@ -74,7 +74,7 @@ type VimMode = "off" | "insert" | VimMove | null;
 
 function isSuggesterActive(plugin: Plugin, view: EditorView): boolean {
   const workspace = plugin.app.workspace as unknown as WorkspaceWithSuggest;
-  if (workspace.editorSuggest?.currentSuggest) return true;
+  if (workspace.editorSuggest?.currentSuggest != null) return true;
 
   try {
     return view.dom.win.document.querySelector(".suggestion-container") !== null;
@@ -83,7 +83,7 @@ function isSuggesterActive(plugin: Plugin, view: EditorView): boolean {
   }
 }
 
-function hasPendingVimInput(state: VimState): boolean {
+export function hasPendingVimInput(state: VimState): boolean {
   const input = state.inputState;
   if (!input) return false;
   const hasValue = (value: unknown): boolean => (Array.isArray(value) ? value.length > 0 : Boolean(value));
@@ -102,14 +102,14 @@ function hasPendingVimInput(state: VimState): boolean {
  * command/visual mode must go through Vim so line boundaries and selections
  * retain Vim semantics.
  */
-function getVimMode(plugin: Plugin, view: EditorView, key: string): VimMode {
+export function getVimMode(plugin: Plugin, view: EditorView, key: string): VimMode {
   const vault = plugin.app.vault as unknown as VaultWithConfig;
-  if (!vault.getConfig?.("vimMode")) return "off";
+  if (vault.getConfig?.("vimMode") !== true) return "off";
 
   const cm = (view as unknown as EditorViewWithLegacyCodeMirror).cm;
   const state = cm?.state?.vim;
   if (!cm || !state) return null;
-  if (state.insertMode) return "insert";
+  if (state.insertMode === true) return "insert";
   if (hasPendingVimInput(state)) return null;
 
   const api = (view.dom.win as unknown as WindowWithCodeMirror).CodeMirror?.Vim;
@@ -163,7 +163,8 @@ export const cursorRepeatThrottle: Patch = {
       try {
         if (entry.vim) {
           const currentState = entry.vim.cm.state?.vim;
-          if (currentState !== entry.vim.state || currentState.insertMode || hasPendingVimInput(currentState)) return;
+          if (currentState !== entry.vim.state || currentState.insertMode === true || hasPendingVimInput(currentState))
+            return;
 
           for (const digit of String(entry.count))
             entry.vim.api.handleKey(entry.vim.cm, digit, "cursor-repeat-throttle");
@@ -310,7 +311,9 @@ export const cursorRepeatThrottle: Patch = {
 
             constructor(view: EditorView) {
               this.view = view;
-              this.onKeydown = (event) => handleKeydown(event, view);
+              this.onKeydown = (event) => {
+                handleKeydown(event, view);
+              };
               view.contentDOM.addEventListener("keydown", this.onKeydown, { capture: true });
             }
 

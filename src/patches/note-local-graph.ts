@@ -78,7 +78,7 @@ interface Embed {
   released: boolean;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
@@ -103,13 +103,13 @@ function getGraphPlugin(app: App): GraphPluginInstance | null {
   return instance as unknown as GraphPluginInstance;
 }
 
-function pickSynced(options: GraphOptions): GraphOptions {
+export function pickSynced(options: GraphOptions): GraphOptions {
   const picked: GraphOptions = {};
   for (const key of SYNCED_KEYS) if (options[key] !== undefined) picked[key] = options[key];
   return picked;
 }
 
-function sameSynced(current: GraphOptions, wanted: GraphOptions): boolean {
+export function sameSynced(current: GraphOptions, wanted: GraphOptions): boolean {
   return SYNCED_KEYS.every(
     (key) => wanted[key] === undefined || JSON.stringify(current[key]) === JSON.stringify(wanted[key]),
   );
@@ -119,7 +119,7 @@ function sameSynced(current: GraphOptions, wanted: GraphOptions): boolean {
 // editing and reading containers, so anchors are looked up in the current mode.
 // Returns false when the note has no anchor yet, e.g. reading mode before its
 // first render.
-function placeHost(view: MarkdownView, hostEl: HTMLElement, position: Position): boolean {
+export function placeHost(view: MarkdownView, hostEl: HTMLElement, position: Position): boolean {
   const preview = view.getMode() === "preview";
   const modeEl = preview ? view.previewMode.containerEl : view.contentEl.querySelector(".markdown-source-view");
   const sizer = modeEl?.querySelector<HTMLElement>(preview ? ".markdown-preview-sizer" : ".cm-sizer");
@@ -193,7 +193,9 @@ export const noteLocalGraph: Patch = {
     const saveOptions = debounce(
       (options: GraphOptions): void => {
         if (disposed || JSON.stringify(options) === JSON.stringify(storedOptions())) return;
-        void ctx.setConfig("graphOptions", options);
+        ctx.setConfig("graphOptions", options).catch((error: unknown) => {
+          console.error("Micropatches (note-local-graph): saving graph options failed", error);
+        });
       },
       1000,
       true,
@@ -326,7 +328,9 @@ export const noteLocalGraph: Patch = {
       if (syncGlobal) synced.set(graph, instance.options);
       const localGraph = graph;
       localGraph.onOptionsChange = (): void => {
-        const { scale: _scale, close: _close, ...rest } = localGraph.engine.getOptions();
+        const rest = { ...localGraph.engine.getOptions() };
+        delete rest["scale"];
+        delete rest["close"];
         // Synced values belong to the global graph; keep them out of local defaults.
         if (getConfig().syncGlobal) for (const key of SYNCED_KEYS) delete rest[key];
         saveOptions(rest);

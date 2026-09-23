@@ -671,3 +671,48 @@ body.micropatches-focus-mode
   > :not(.cm-active, :focus-within) {
   opacity: 0.35;
 }
+
+/* Bases column search: the popover is Bases' own toolbar menu. The value
+   list scrolls under a fixed search field, and each rendered value is inert
+   so the whole row, not a link inside it, is what you click. */
+body:not(.is-phone) .micropatches-bases-column-search .bases-toolbar-items .suggestion-group {
+  max-height: min(360px, 50vh);
+  overflow-y: auto;
+}
+
+.micropatches-bases-column-search .bases-toolbar-menu-item-name {
+  pointer-events: none;
+}
+
+.micropatches-bases-column-search .bases-toolbar-menu-item-name > p {
+  display: inline;
+  margin: 0;
+}
+
+.micropatches-bases-column-filter {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  color: var(--text-accent);
+}
+
+/* Bases pagination: previous/next buttons are the toolbar's own icon buttons;
+   the page label between them matches the result count next to it. The
+   result count pushes the rest of the toolbar right; the pager takes that
+   over so it sits beside the count. */
+.bases-toolbar .bases-toolbar-result-count.micropatches-bases-paginated {
+  margin-inline-end: 0;
+}
+
+.bases-toolbar .micropatches-bases-pagination {
+  display: flex;
+  align-items: center;
+  margin-inline-end: auto;
+}
+
+.micropatches-bases-pagination-label {
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}

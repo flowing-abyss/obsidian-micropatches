@@ -1,2 +1,17 @@
 allowBuilds:
   esbuild: true
+
+# Supply-chain guards: skip versions published less than a day ago, and
+# refuse transitive dependencies from git or tarball URLs.
+minimumReleaseAge: 1440
+blockExoticSubdeps: true
+
+peerDependencyRules:
+  allowedVersions:
+    # Pinned to the version current when the plugin was published; it only
+    # reads the manifest type, so the newer `obsidian` this repo tracks is fine.
+    "eslint-plugin-obsidianmd>obsidian": "*"
+    # Obsidian's peers name old CodeMirror versions, but the app bundles newer
+    # ones (EditorSelection.range takes `assoc`), so type against the latest.
+    "obsidian>@codemirror/state": "6"
+    "obsidian>@codemirror/view": "6"

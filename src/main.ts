@@ -10,6 +10,8 @@ import {
 import type { Patch, PatchContext, PatchHandle } from "./patch";
 import { backlinksDefaults } from "./patches/backlinks-defaults";
 import { basesAutoSearch } from "./patches/bases-auto-search";
+import { basesColumnSearch } from "./patches/bases-column-search";
+import { basesPagination } from "./patches/bases-pagination";
 import { codeBlockTitle } from "./patches/code-block-title";
 import { cursorRepeatThrottle } from "./patches/cursor-repeat-throttle";
 import { doubleTapCommands } from "./patches/double-tap-commands";
@@ -42,6 +44,8 @@ const PATCHES: Patch[] = [
   hotCorners,
   doubleTapCommands,
   focusMode,
+  basesColumnSearch,
+  basesPagination,
 ];
 
 interface MicropatchesSettings {
@@ -58,7 +62,7 @@ function defaultSettings(): MicropatchesSettings {
 
 export default class MicropatchesPlugin extends Plugin {
   override settings: MicropatchesSettings = defaultSettings();
-  private handles = new Map<string, PatchHandle>();
+  private readonly handles = new Map<string, PatchHandle>();
 
   override async onload(): Promise<void> {
     await this.loadSettings();
@@ -71,9 +75,13 @@ export default class MicropatchesPlugin extends Plugin {
         name: `Toggle ${patch.name}`,
         callback: () => {
           const enabled = !(this.settings.enabled[patch.id] ?? false);
-          void this.setPatchEnabled(patch.id, enabled).then(() => {
-            new Notice(`${patch.name}: ${enabled ? "enabled" : "disabled"}`);
-          });
+          this.setPatchEnabled(patch.id, enabled)
+            .then(() => {
+              new Notice(`${patch.name}: ${enabled ? "enabled" : "disabled"}`);
+            })
+            .catch((error: unknown) => {
+              console.error(`Micropatches (${patch.id}): toggling failed`, error);
+            });
         },
       });
     }

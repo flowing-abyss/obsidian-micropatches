@@ -42,13 +42,23 @@ export const instantUi: Patch = {
       if (!windows.has(win)) return;
       windows.delete(win);
       try {
-        win.document?.body?.classList.remove(BODY_CLASS);
+        // A window closing late can already have lost its document or body.
+        const body = (win.document as Document | null)?.body as HTMLElement | null | undefined;
+        body?.classList.remove(BODY_CLASS);
       } catch (error) {
         console.error("Micropatches (instant-ui): teardown cleanup failed", error);
       }
     };
 
     setupWindow(window);
+    // Popouts that were open before this loaded (the plugin enabled later)
+    // fire no "window-open". Once unloaded, not even the main window is set up.
+    plugin.app.workspace.onLayoutReady(() => {
+      if (!windows.has(window)) return;
+      plugin.app.workspace.iterateAllLeaves((leaf) => {
+        setupWindow(leaf.view.containerEl.win);
+      });
+    });
 
     plugin.registerEvent(
       plugin.app.workspace.on("window-open", (_workspaceWindow, win) => {
@@ -65,7 +75,9 @@ export const instantUi: Patch = {
       cleanup: (): void => {
         for (const win of Array.from(windows)) teardownWindow(win);
       },
-      onToggle: (): void => applyAll(),
+      onToggle: (): void => {
+        applyAll();
+      },
     };
   },
 };

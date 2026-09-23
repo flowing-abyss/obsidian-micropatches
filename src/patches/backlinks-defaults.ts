@@ -75,31 +75,31 @@ interface ManagedController {
   invalidFilterNotified: string | null;
 }
 
-function isBacklinksController(value: unknown): value is BacklinksController {
+export function isBacklinksController(value: unknown): value is BacklinksController {
   if (typeof value !== "object" || value === null) return false;
   const candidate = value as Partial<BacklinksController>;
+  const search = candidate.searchComponent as Partial<SearchComponentInternal> | undefined;
+  // Not necessarily a DOM node yet, so maybe without a window.
+  const win = (search?.inputEl as Partial<HTMLInputElement> | undefined)?.win;
   return (
     typeof candidate.setCollapseAll === "function" &&
     typeof candidate.setExtraContext === "function" &&
     typeof candidate.setSortOrder === "function" &&
     typeof candidate.setUnlinkedCollapsed === "function" &&
     typeof candidate.updateSearch === "function" &&
-    candidate.showSearchButtonEl !== undefined &&
-    candidate.showSearchButtonEl !== null &&
+    candidate.showSearchButtonEl != null &&
     typeof candidate.showSearchButtonEl.toggleClass === "function" &&
     typeof candidate.showSearchButtonEl.createSpan === "function" &&
     typeof candidate.showSearchButtonEl.getAttribute === "function" &&
     typeof candidate.showSearchButtonEl.removeClass === "function" &&
-    typeof candidate.searchComponent?.getValue === "function" &&
-    typeof candidate.searchComponent.setValue === "function" &&
-    candidate.searchComponent.inputEl !== undefined &&
-    candidate.searchComponent.inputEl !== null &&
-    typeof candidate.searchComponent.inputEl.win?.setTimeout === "function" &&
-    typeof candidate.searchComponent.inputEl.win.clearTimeout === "function"
+    typeof search?.getValue === "function" &&
+    typeof search.setValue === "function" &&
+    typeof win?.setTimeout === "function" &&
+    typeof win.clearTimeout === "function"
   );
 }
 
-function normalizedSortOrder(value: string): SortOrder {
+export function normalizedSortOrder(value: string): SortOrder {
   return Object.prototype.hasOwnProperty.call(SORT_OPTIONS, value) ? (value as SortOrder) : DEFAULT_CONFIG.sortOrder;
 }
 
@@ -152,8 +152,10 @@ export const backlinksDefaults: Patch = {
     };
 
     const tooltipWithStatus = (base: string, status: string): string => {
-      const action = base.replace(/[.\s]+$/u, "");
-      return `${action}. ${status}`;
+      // Trailing periods and spaces go; a loop, as /[.\s]+$/ backtracks.
+      let end = base.length;
+      while (end > 0 && /[.\s]/u.test(base.charAt(end - 1))) end--;
+      return `${base.slice(0, end)}. ${status}`;
     };
 
     const updateIndicator = (record: ManagedController): void => {
@@ -190,9 +192,9 @@ export const backlinksDefaults: Patch = {
       clearSearchTimer(record);
       const visibleQuery = record.search.getValue();
       const defaultFilter = ctx.isEnabled() ? getConfig().defaultFilter : "";
-      const effectiveQuery = visibleQuery || defaultFilter;
+      const effectiveQuery = visibleQuery !== "" ? visibleQuery : defaultFilter;
 
-      if (visibleQuery || !defaultFilter) {
+      if (visibleQuery !== "" || defaultFilter === "") {
         runNativeSearch(record);
         record.hiddenDefaultActive = false;
         record.invalidFilterNotified = null;
@@ -228,9 +230,9 @@ export const backlinksDefaults: Patch = {
     const setUnlinkedExpanded = (controller: BacklinksController, expanded: boolean): void => {
       try {
         const result = controller.setUnlinkedCollapsed(!expanded, false);
-        void Promise.resolve(result).catch((error: unknown) =>
-          reportInternalError("setting the Unlinked mentions section", error),
-        );
+        void Promise.resolve(result).catch((error: unknown) => {
+          reportInternalError("setting the Unlinked mentions section", error);
+        });
       } catch (error) {
         reportInternalError("setting the Unlinked mentions section", error);
       }
@@ -279,7 +281,6 @@ export const backlinksDefaults: Patch = {
 
       const originalUpdateSearch = controller.updateSearch;
       const originalChangeCallback = search.changeCallback;
-      let record: ManagedController;
       const patchedUpdateSearch = (): void => {
         if (disposed || !ctx.isEnabled() || managed.get(controller) !== record) {
           originalUpdateSearch.call(controller);
@@ -300,7 +301,7 @@ export const backlinksDefaults: Patch = {
         }, 300);
       };
 
-      record = {
+      const record: ManagedController = {
         controller,
         search,
         originalUpdateSearch,

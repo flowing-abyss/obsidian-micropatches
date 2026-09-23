@@ -1,4 +1,4 @@
-import { Prec } from "@codemirror/state";
+import { type Extension, Prec } from "@codemirror/state";
 import { EditorView, type PluginValue, ViewPlugin, type ViewUpdate } from "@codemirror/view";
 import type { Plugin, SettingGroupItem } from "obsidian";
 import type { Patch, PatchContext, PatchHandle } from "../patch";
@@ -10,13 +10,13 @@ interface Config {
 
 const DEFAULT_CONFIG: Config = { percentageMode: true, offset: 25 };
 
-function calcRequiredOffset(containerHeight: number, cursorHeight: number, config: Config): number {
+export function calcRequiredOffset(containerHeight: number, cursorHeight: number, config: Config): number {
   const maxOffset = (containerHeight - cursorHeight) / 2;
   const requiredOffset = config.percentageMode ? (containerHeight * config.offset) / 100 : config.offset;
   return Math.max(0, Math.min(requiredOffset, maxOffset));
 }
 
-function createExtension(getConfig: () => Config, isEnabled: () => boolean) {
+function createExtension(getConfig: () => Config, isEnabled: () => boolean): Extension {
   return Prec.highest(
     ViewPlugin.fromClass(
       class implements PluginValue {

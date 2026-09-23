@@ -133,7 +133,9 @@ export const hideTrafficLights: Patch = {
     const setupWindow = (win: Window): void => {
       if (windows.has(win)) return;
 
-      const onFocus = (): void => applyState(win);
+      const onFocus = (): void => {
+        applyState(win);
+      };
       windows.set(win, { onFocus });
       win.addEventListener("focus", onFocus);
 
@@ -152,7 +154,8 @@ export const hideTrafficLights: Patch = {
 
       try {
         win.removeEventListener("focus", state.onFocus);
-        win.document?.body?.classList.remove(BODY_CLASS);
+        const body = (win.document as Document | null)?.body as HTMLElement | null | undefined;
+        body?.classList.remove(BODY_CLASS);
       } catch (error) {
         console.error("Micropatches (hide-traffic-lights): teardown cleanup failed", error);
       }
@@ -160,6 +163,14 @@ export const hideTrafficLights: Patch = {
     };
 
     setupWindow(window);
+    // Popouts that were open before this loaded (the plugin enabled later)
+    // fire no "window-open". Once unloaded, not even the main window is set up.
+    plugin.app.workspace.onLayoutReady(() => {
+      if (!windows.has(window)) return;
+      plugin.app.workspace.iterateAllLeaves((leaf) => {
+        setupWindow(leaf.view.containerEl.win);
+      });
+    });
 
     plugin.registerEvent(plugin.app.workspace.on("layout-change", () => applyAllDebounced()));
     plugin.registerEvent(
@@ -177,7 +188,9 @@ export const hideTrafficLights: Patch = {
       cleanup: (): void => {
         for (const win of Array.from(windows.keys())) teardownWindow(win);
       },
-      onToggle: (): void => applyAll(),
+      onToggle: (): void => {
+        applyAll();
+      },
     };
   },
 };

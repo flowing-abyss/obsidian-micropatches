@@ -76,7 +76,7 @@ export const focusMode: Patch = {
     const retarget = (leaf: WorkspaceLeaf | null): void => {
       if (!active || !leaf) return;
       if (isSidebarLeaf(leaf)) {
-        if (targetLeaf?.view.containerEl.isConnected) workspace.setActiveLeaf(targetLeaf, { focus: true });
+        if (targetLeaf?.view.containerEl.isConnected === true) workspace.setActiveLeaf(targetLeaf, { focus: true });
         return;
       }
       const leafEl = leaf.view.containerEl.closest<HTMLElement>(".workspace-leaf");
@@ -163,14 +163,26 @@ export const focusMode: Patch = {
       if (!windows.has(win)) return;
       windows.delete(win);
       try {
-        win.document?.body?.classList.remove(BODY_CLASS);
-        if (win.document) clearTarget(win.document);
+        // A window closing late can already have lost its document or body.
+        const doc = win.document as Document | null;
+        if (doc) {
+          (doc.body as HTMLElement | null)?.classList.remove(BODY_CLASS);
+          clearTarget(doc);
+        }
       } catch (error) {
         console.error("Micropatches (focus-mode): teardown cleanup failed", error);
       }
     };
 
     setupWindow(window);
+    // Popouts that were open before this loaded (the plugin enabled later)
+    // fire no "window-open". Once unloaded, not even the main window is set up.
+    workspace.onLayoutReady(() => {
+      if (!windows.has(window)) return;
+      workspace.iterateAllLeaves((leaf) => {
+        setupWindow(leaf.view.containerEl.win);
+      });
+    });
 
     plugin.addCommand({
       id: "focus-mode",
@@ -182,7 +194,11 @@ export const focusMode: Patch = {
       },
     });
 
-    plugin.registerEvent(workspace.on("active-leaf-change", (leaf) => retarget(leaf)));
+    plugin.registerEvent(
+      workspace.on("active-leaf-change", (leaf) => {
+        retarget(leaf);
+      }),
+    );
     // Closing the target or rebuilding the layout drops the marker classes.
     plugin.registerEvent(
       workspace.on("layout-change", () => {

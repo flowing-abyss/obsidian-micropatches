@@ -10,52 +10,58 @@ A small Obsidian plugin with targeted fixes and quality of life tweaks.
 
 ## Patches
 
-1. Cursor repeat throttle
+1. **Cursor repeat throttle**
    Holding an arrow key could snowball into a multi second freeze. This coalesces held-arrow repeats into one CodeMirror update per animation frame instead of one per repeat event. It also preserves CodeMirror's cursor-side state so vertical Shift selection crosses soft wraps one visual line per keypress. Horizontal and other modified arrow commands remain native. It supports Vim insert, normal and visual modes while stepping aside for pending Vim commands, suggester popups and IME composition.
 
-2. Scroll offset
+2. **Scroll offset**
    Keeps a minimum distance between the cursor and the top or bottom edge of the editor. Percentage or fixed pixels, both configurable.
 
-3. Hide traffic lights
+3. **Hide traffic lights**
    Hides the window buttons (macOS traffic lights, or minimize, maximize and close on Windows and Linux) and removes the reserved tab bar space, for every open desktop window.
 
-4. Bases auto search
+4. **Bases auto search**
    Opens the search bar the first time a Bases view is shown.
 
-5. Instant UI, off by default
+5. **Instant UI**, off by default
    Collapses animation and transition durations to near zero across the UI, while keeping completion events and fill mode intact so nothing gets stuck invisible. Spinners and other continuous indicators are exempted.
 
-6. Code block language and title
+6. **Code block language and title**
    Exposes fenced code block language, optional title and plain-text state to themes in both Live Preview and reading mode. It only supplies metadata for styling; it does not change rendering or copy behavior by itself.
 
-7. Copy inline code on click
+7. **Copy inline code on click**
    Copies inline code on click in the editor and reading mode without adding buttons or controls, then briefly confirms a successful copy. Copying highlighted text is available as an optional setting and defaults off.
 
-8. Footnotes in the margin
+8. **Footnotes in the margin**
    Shows editable footnotes beside the document in Live Preview and reading mode. Choose the side and distance; crowded notes collapse into rows that expand on hover or click. The original footnote list remains at the end.
 
-9. Periodic note breadcrumbs
+9. **Periodic note breadcrumbs**
    Adds the previous and next existing period to a periodic note's breadcrumb. The muted next period creates a new note when the sequence reaches its end. Requires Periodic Notes 1.0.0 or newer.
 
-10. Backlinks defaults
+10. **Backlinks defaults**
     Sets consistent collapse, context, sorting, unlinked-section, and hidden default-filter behavior for linked and unlinked mentions.
 
-11. Heading backlinks
+11. **Heading backlinks**
     Marks headings that have incoming links. Hover or activate the link indicator to see every source with context; choose a source to open its exact link in a new tab. An opt-in setting updates incoming links after you rename a heading and move the caret away, switch notes, or close the tab, with one short notice per updated link. Works in the editor and reading mode.
 
-12. Outline follows viewport
+12. **Outline follows viewport**
     Makes the core Outline follow the section at the center of the note in editing and reading modes, with Follow enabled automatically.
 
-13. Local graph in notes
+13. **Local graph in notes**
     Shows the core Local graph below the note title or above backlinks, optionally synced with the global graph settings.
 
-14. Hot corners
+14. **Hot corners**
     Runs a command when you hold a modifier key (Shift by default) and move the mouse into a window corner. Assigned corners glow and name their command as the pointer approaches.
 
-15. Double-tap commands
+15. **Double-tap commands**
     Runs a command when you tap a modifier key (Shift, Ctrl, Alt/Option, or Cmd on macOS) twice quickly. Typing, shortcuts, and long holds never count as taps.
 
-16. Focus mode command
+16. **Focus mode command**
     Adds an `Enter or exit focus mode` command that hides everything except the active note's text and title, keeps it hidden until you exit, and dims all lines but the current one. Changes no settings; always off after a restart.
+
+17. **Bases column search**
+    Click a table column header to search that column; rows narrow as you type and nothing is written to the .base file.
+
+18. **Bases pagination**
+    Adds previous and next page buttons next to the result count of a base with a result limit.
 
 Each patch can be switched on or off separately in Settings or with its `Toggle …` command, no reload needed. All patches are disabled by default so every change is an explicit opt-in.

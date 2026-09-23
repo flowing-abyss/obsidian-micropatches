@@ -26,8 +26,8 @@ interface AppWithCommands extends App {
 const DEFAULT_MODIFIER: Modifier = "shift";
 // Distances from the corner point, in px. Inside HINT_RADIUS the corner glows
 // brighter the closer the pointer gets; inside TRIGGER_RADIUS it fires.
-const TRIGGER_RADIUS = 64;
-const HINT_RADIUS = 240;
+export const TRIGGER_RADIUS = 64;
+export const HINT_RADIUS = 240;
 const GLOW_CLASS = "micropatches-hot-corner";
 
 const MODIFIER_OPTIONS: Record<Modifier, string> = {
@@ -58,25 +58,27 @@ interface WindowState {
   onKeyup: (event: KeyboardEvent) => void;
 }
 
-function modifierHeld(event: MouseEvent, modifier: Modifier): boolean {
+export function modifierHeld(event: MouseEvent, modifier: Modifier): boolean {
   if (modifier === "shift") return event.shiftKey;
   if (modifier === "ctrl") return event.ctrlKey;
   if (modifier === "alt") return event.altKey;
   return event.metaKey;
 }
 
-function nearestCorner(win: Window, x: number, y: number): { corner: Corner; distance: number } {
+export function nearestCorner(win: Window, x: number, y: number): { corner: Corner; distance: number } {
   const right = x > win.innerWidth / 2;
   const bottom = y > win.innerHeight / 2;
   const dx = right ? win.innerWidth - 1 - x : x;
   const dy = bottom ? win.innerHeight - 1 - y : y;
-  const corner: Corner = bottom ? (right ? "bottomRight" : "bottomLeft") : right ? "topRight" : "topLeft";
+  let corner: Corner;
+  if (bottom) corner = right ? "bottomRight" : "bottomLeft";
+  else corner = right ? "topRight" : "topLeft";
   return { corner, distance: Math.hypot(dx, dy) };
 }
 
 // "QuickAdd: Create note" -> "Create note": the glow label names the action,
 // not the plugin it comes from.
-function commandLabel(name: string): string {
+export function commandLabel(name: string): string {
   const separator = name.indexOf(": ");
   return separator === -1 ? name : name.slice(separator + 2);
 }
@@ -84,7 +86,7 @@ function commandLabel(name: string): string {
 class CommandSuggestModal extends FuzzySuggestModal<CommandLike | null> {
   // getItems() runs on every keystroke; the modal is short-lived, so the
   // sorted list is built once.
-  private readonly items: (CommandLike | null)[];
+  private readonly items: Array<CommandLike | null>;
 
   constructor(
     app: AppWithCommands,
@@ -95,7 +97,7 @@ class CommandSuggestModal extends FuzzySuggestModal<CommandLike | null> {
     this.setPlaceholder("Choose a command for this corner…");
   }
 
-  override getItems(): (CommandLike | null)[] {
+  override getItems(): Array<CommandLike | null> {
     return this.items;
   }
 
@@ -183,7 +185,7 @@ export const hotCorners: Patch = {
         const { corner, distance } = nearestCorner(win, event.clientX, event.clientY);
         if (spent !== null && (corner !== spent || distance > HINT_RADIUS)) spent = null;
         const commandId = ctx.getConfig<string>(corner, "");
-        if (!commandId || distance > HINT_RADIUS) {
+        if (commandId === "" || distance > HINT_RADIUS) {
           armed = true;
           hide();
           return;
@@ -248,6 +250,14 @@ export const hotCorners: Patch = {
     };
 
     setupWindow(window);
+    // Popouts that were open before this loaded (the plugin enabled later)
+    // fire no "window-open". Once unloaded, not even the main window is set up.
+    plugin.app.workspace.onLayoutReady(() => {
+      if (!windows.has(window)) return;
+      plugin.app.workspace.iterateAllLeaves((leaf) => {
+        setupWindow(leaf.view.containerEl.win);
+      });
+    });
     plugin.registerEvent(
       plugin.app.workspace.on("window-open", (_workspaceWindow, win) => {
         setupWindow(win);
@@ -289,7 +299,7 @@ export const hotCorners: Patch = {
         render: (setting): void => {
           const label = (): string => {
             const id = ctx.getConfig<string>(corner, "");
-            return id ? (commands.commands[id]?.name ?? `Missing: ${id}`) : "Choose command…";
+            return id !== "" ? (commands.commands[id]?.name ?? `Missing: ${id}`) : "Choose command…";
           };
           // Components are thenables (BaseComponent.then), so a promise
           // callback must never return one: resolving a promise with the
@@ -299,13 +309,21 @@ export const hotCorners: Patch = {
             await ctx.setConfig(corner, commandId);
             button.setButtonText(label());
           };
+          const save = (button: ButtonComponent, commandId: string): void => {
+            assign(button, commandId).catch((error: unknown) => {
+              console.error("Micropatches (hot-corners): saving the command failed", error);
+            });
+          };
+          const choose = (button: ButtonComponent): void => {
+            new CommandSuggestModal(app as AppWithCommands, (command) => {
+              save(button, command?.id ?? "");
+            }).open();
+          };
           let commandButton: ButtonComponent | undefined;
           setting.addButton((button) => {
             commandButton = button;
             button.setButtonText(label()).onClick(() => {
-              new CommandSuggestModal(app as AppWithCommands, (command) => {
-                void assign(button, command?.id ?? "");
-              }).open();
+              choose(button);
             });
           });
           setting.addExtraButton((clear) => {
@@ -313,7 +331,7 @@ export const hotCorners: Patch = {
               .setIcon("x")
               .setTooltip("Clear")
               .onClick(() => {
-                if (commandButton) void assign(commandButton, "");
+                if (commandButton) save(commandButton, "");
               });
           });
         },

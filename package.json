@@ -1,6 +1,6 @@
 {
   "name": "micropatches",
-  "version": "1.8.1",
+  "version": "1.9.0",
   "description": "Small, targeted fixes and quality of life tweaks.",
   "main": "main.js",
   "type": "module",
@@ -15,7 +15,10 @@
     "lint": "eslint . --max-warnings 0",
     "deadcode": "knip",
     "typecheck": "tsc -noEmit -skipLibCheck",
-    "verify": "pnpm format:check && pnpm lint && pnpm deadcode && pnpm typecheck && pnpm build"
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "verify": "pnpm format:check && pnpm lint && pnpm deadcode && pnpm typecheck && pnpm test && pnpm build"
   },
   "knip": {
     "project": [
@@ -28,30 +31,35 @@
     ]
   },
   "release": {
-    "mainJsBudgetBytes": 114688
+    "mainJsBudgetBytes": 131072
   },
   "keywords": [],
   "license": "MIT",
   "packageManager": "pnpm@11.17.0",
   "engines": {
-    "node": ">=22"
+    "node": ">=22.12"
   },
   "devDependencies": {
-    "@codemirror/language": "^6.12.0",
-    "@codemirror/state": "^6.5.0",
-    "@codemirror/view": "^6.35.0",
+    "@codemirror/language": "^6.12.4",
+    "@codemirror/state": "^6.7.6",
+    "@codemirror/view": "^6.43.13",
     "@eslint/js": "^9.39.5",
-    "@types/node": "^24.13.3",
-    "esbuild": "0.28.1",
+    "@types/node": "^24.13.6",
+    "@vitest/coverage-v8": "^5.0.1",
+    "esbuild": "0.28.2",
     "eslint": "^9.39.5",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-obsidianmd": "^0.4.2",
-    "globals": "^17.11.0",
+    "eslint-plugin-sonarjs": "^4.2.1",
+    "globals": "^17.12.0",
     "jiti": "^2.7.0",
-    "knip": "^6.34.0",
+    "jsdom": "^30.1.1",
+    "knip": "^6.37.0",
     "obsidian": "latest",
-    "prettier": "^3.9.6",
-    "typescript": "^5.9.3",
-    "typescript-eslint": "^8.65.0"
+    "obsidian-test-mocks": "^6.0.0",
+    "prettier": "^3.9.8",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.70.1",
+    "vitest": "^5.0.1"
   }
 }

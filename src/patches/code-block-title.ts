@@ -1,14 +1,22 @@
-import { MarkdownView, Plugin, type MarkdownPostProcessorContext } from "obsidian";
+import { MarkdownView, type Plugin, type MarkdownPostProcessorContext } from "obsidian";
 import { ensureSyntaxTree, syntaxTree } from "@codemirror/language";
 import { RangeSetBuilder } from "@codemirror/state";
-import { Decoration, ViewPlugin, type DecorationSet, type EditorView, type ViewUpdate } from "@codemirror/view";
+import { Decoration, EditorView, ViewPlugin, type DecorationSet, type ViewUpdate } from "@codemirror/view";
 import type { Patch, PatchContext, PatchHandle } from "../patch";
 
 // CommonMark permits up to three spaces before a fence. Each blockquote
 // level adds its own `>` prefix; accepting that prefix is essential for
 // callouts and quoted code blocks, while still rejecting a four-space
-// indented code literal.
-const FENCE = /^(?: {0,3}>[ \t]?)* {0,3}(`{3,}|~{3,})(.*)$/;
+// indented code literal. No two parts can match the same spaces, so deep
+// quotes don't backtrack exponentially.
+export const FENCE = /^ {0,3}(?:>(?: {0,4}|\t {0,3}))*(`{3,}(?!`)|~{3,}(?!~))(.*)$/;
+
+// A row Obsidian's parser already marks as a fence may be indented any
+// amount, as in a nested list item.
+const OPENING_ROW = /^[\t ]*(?:>[\t ]*)*(`{3,}(?!`)|~{3,}(?!~))(.*)$/;
+
+// A callout, quote or list: one section, however many code blocks it holds.
+const CONTAINER = /^ {0,3}(?:>|[-+*][\t ]|\d{1,9}[.)][\t ])/;
 
 interface FenceInfo {
   language: string;
@@ -21,14 +29,43 @@ interface FenceInfo {
  * quoted or not. Anything else in the info string is left alone — other
  * plugins put their own parameters there.
  */
-function parseInfo(info: string): FenceInfo | null {
+export function parseInfo(info: string): FenceInfo | null {
   const trimmed = info.trim();
   if (trimmed === "") return { language: "", title: null };
   const language = trimmed.split(/\s+/)[0] ?? "";
   if (language.includes("`")) return null;
-  const match = /\btitle\s*[:=]\s*("([^"]*)"|'([^']*)'|(\S+))/i.exec(trimmed);
+  const match = /\stitle\s*[:=]\s*("([^"]*)"|'([^']*)'|(\S+))/i.exec(trimmed.slice(language.length));
   const title = match ? (match[2] ?? match[3] ?? match[4] ?? null) : null;
   return { language, title };
+}
+
+// The fenced blocks among a container's lines, in order.
+function containedFences(lines: string[]): FenceInfo[] {
+  const fences: FenceInfo[] = [];
+  let open: string | null = null;
+  for (const line of lines) {
+    const match = OPENING_ROW.exec(line);
+    const run = match?.[1];
+    const rest = match?.[2] ?? "";
+    if (open !== null) {
+      if (run !== undefined && run[0] === open[0] && run.length >= open.length && rest.trim() === "") open = null;
+      continue;
+    }
+    const info = run === undefined ? null : parseInfo(rest);
+    if (info === null) continue;
+    fences.push(info);
+    open = run ?? null;
+  }
+  return fences;
+}
+
+// The fences behind a section's code blocks, in order.
+function sectionFences(lines: string[]): FenceInfo[] {
+  const first = lines[0] ?? "";
+  if (CONTAINER.test(first)) return containedFences(lines);
+  const fence = FENCE.exec(first);
+  const info = fence === null ? null : parseInfo(fence[2] ?? "");
+  return info === null ? [] : [info];
 }
 
 function apply(el: HTMLElement, info: FenceInfo): void {
@@ -41,6 +78,20 @@ function apply(el: HTMLElement, info: FenceInfo): void {
   }
   if (info.title !== null) el.setAttribute("data-code-title", info.title);
   else el.removeAttribute("data-code-title");
+}
+
+// Indented code has no fence: unless every block has one, which fence
+// belongs to which block is unknown, and none is labelled.
+function label(pres: HTMLElement[], fences: FenceInfo[]): void {
+  if (pres.length !== fences.length) return;
+  pres.forEach((pre, index) => {
+    const info = fences[index];
+    if (info !== undefined) apply(pre, info);
+  });
+}
+
+function codeBlocks(el: HTMLElement): HTMLElement[] {
+  return Array.from(el.querySelectorAll("pre")).filter((pre) => pre.querySelector("code") !== null);
 }
 
 /**
@@ -74,24 +125,61 @@ export const codeBlockTitle: Patch = {
     // everything else on the fence.
     plugin.registerMarkdownPostProcessor((el: HTMLElement, mdCtx: MarkdownPostProcessorContext) => {
       if (!ctx.isEnabled()) return;
-      const linesBySection = new Map<string, string[]>();
-      for (const pre of Array.from(el.querySelectorAll("pre"))) {
-        if (pre.querySelector("code") === null) continue;
+      const linesByText = new Map<string, string[]>();
+      const sections = new Map<string, { lines: string[]; pres: HTMLElement[] }>();
+      let unplaced = false;
+      for (const pre of codeBlocks(el)) {
         const section = mdCtx.getSectionInfo(pre);
-        if (section === null) continue;
-        let lines = linesBySection.get(section.text);
-        if (lines === undefined) {
-          lines = section.text.split("\n");
-          linesBySection.set(section.text, lines);
+        if (section === null) {
+          unplaced = true;
+          continue;
         }
-        const first = lines[section.lineStart];
-        if (first === undefined) continue;
-        const fence = FENCE.exec(first);
-        if (fence === null) continue;
-        const info = parseInfo(fence[2] ?? "");
-        if (info !== null) apply(pre, info);
+        const key = `${section.lineStart}:${section.lineEnd}`;
+        let group = sections.get(key);
+        if (group === undefined) {
+          let lines = linesByText.get(section.text);
+          if (lines === undefined) {
+            lines = section.text.split("\n");
+            linesByText.set(section.text, lines);
+          }
+          group = { lines: lines.slice(section.lineStart, section.lineEnd + 1), pres: [] };
+          sections.set(key, group);
+        }
+        group.pres.push(pre);
+      }
+      for (const { lines, pres } of sections.values()) label(pres, sectionFences(lines));
+
+      // Live preview draws a callout as a widget, and its code blocks come
+      // with no section. Once the widget is in the editor, the callout's
+      // source starts at the line it sits on.
+      const embed = unplaced ? el.closest<HTMLElement>(".cm-embed-block") : null;
+      if (embed) {
+        el.win.requestAnimationFrame(() => {
+          labelEmbed(embed);
+        });
       }
     });
+
+    const labelEmbed = (embed: HTMLElement): void => {
+      const editorEl = embed.closest<HTMLElement>(".cm-editor");
+      if (!ctx.isEnabled() || !embed.isConnected || !editorEl) return;
+      const view = EditorView.findFromDOM(editorEl);
+      if (!view) return;
+      const { doc } = view.state;
+      let line;
+      try {
+        line = doc.lineAt(view.posAtDOM(embed));
+      } catch {
+        return;
+      }
+      const lines: string[] = [];
+      while (/^ {0,3}>/.test(line.text)) {
+        lines.push(line.text);
+        if (line.number === doc.lines) break;
+        line = doc.line(line.number + 1);
+      }
+      label(codeBlocks(embed), containedFences(lines));
+    };
 
     // Live preview. Language/title metadata belongs on the begin row, which
     // the theme paints as the header band. A language-less block additionally
@@ -121,7 +209,7 @@ export const codeBlockTitle: Patch = {
       if (rows.length === 0) return builder.finish();
 
       let current: FenceInfo | null = null;
-      if (!rows[0]?.name.includes("HyperMD-codeblock-begin")) {
+      if (rows[0]?.name.includes("HyperMD-codeblock-begin") !== true) {
         // The opening row may sit above the viewport. Walk backward only
         // within the currently visible code block to recover its info;
         // unlike the previous line-1 scan, this never crosses the nearest
@@ -139,7 +227,7 @@ export const codeBlockTitle: Patch = {
         const begins = row.name.includes("HyperMD-codeblock-begin");
         const ends = row.name.includes("HyperMD-codeblock-end");
         if (begins) {
-          const fence = FENCE.exec(line.text);
+          const fence = OPENING_ROW.exec(line.text);
           current = fence === null ? null : parseInfo(fence[2] ?? "");
         }
         if (current !== null) {

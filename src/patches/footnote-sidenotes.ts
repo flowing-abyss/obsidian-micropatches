@@ -1,5 +1,5 @@
 import {
-  Component,
+  type Component,
   editorInfoField,
   editorLivePreviewField,
   MarkdownRenderChild,
@@ -296,16 +296,16 @@ const CSS = `
 
 `;
 
-function isSide(value: unknown): value is Side {
+export function isSide(value: unknown): value is Side {
   return value === "left" || value === "right";
 }
 
-function configuredDistance(value: unknown): number {
+export function configuredDistance(value: unknown): number {
   if (typeof value !== "number" || !Number.isFinite(value)) return DEFAULT_DISTANCE;
   return Math.min(MAX_DISTANCE, Math.max(0, value));
 }
 
-function markdownLines(source: string): MarkdownLine[] {
+export function markdownLines(source: string): MarkdownLine[] {
   const lines: MarkdownLine[] = [];
   let from = 0;
   let firstLine = true;
@@ -330,24 +330,30 @@ function markdownLines(source: string): MarkdownLine[] {
       if (/^(?:---|\.\.\.)[ \t]*$/.test(normalized)) inFrontmatter = false;
     } else if (fence !== null) {
       excluded = true;
-      const closing = normalized.match(/^ {0,3}(`+|~+)[ \t]*$/)?.[1];
-      if (closing !== undefined && closing[0] === fence.marker && closing.length >= fence.length) fence = null;
+      const closing = /^ {0,3}(`+|~+)[ \t]*$/.exec(normalized)?.[1];
+      if (closing?.[0] === fence.marker && closing.length >= fence.length) fence = null;
     } else {
-      const opening = normalized.match(/^ {0,3}(`{3,}|~{3,})/)?.[1];
+      // A fence inside a comment is commented out, not opened.
+      const opening = inHtmlComment || inObsidianComment ? undefined : /^ {0,3}(`{3,}|~{3,})/.exec(normalized)?.[1];
       if (opening !== undefined) {
         fence = { marker: opening[0] as "`" | "~", length: opening.length };
         excluded = true;
       } else {
         excluded = inHtmlComment || inObsidianComment;
-        const htmlOpens = normalized.indexOf("<!--");
+        // Markers in inline code are text, such as `%%` in a note about
+        // comments. Inside a comment there is no inline code.
+        const code = normalized.includes("`")
+          ? inlineCodeRanges([{ from: 0, content: normalized, excluded: false }])
+          : [];
+        const htmlOpens = inHtmlComment ? -1 : indexOutside(normalized, "<!--", 0, code);
         const htmlCloses = normalized.indexOf("-->", htmlOpens === -1 ? 0 : htmlOpens + 4);
         if (inHtmlComment) inHtmlComment = htmlCloses === -1;
         else if (htmlOpens !== -1 && htmlCloses === -1) inHtmlComment = true;
 
-        const obsidianMarker = normalized.indexOf("%%");
-        if (inObsidianComment) inObsidianComment = obsidianMarker === -1;
-        else if (obsidianMarker !== -1 && normalized.indexOf("%%", obsidianMarker + 2) === -1) {
-          inObsidianComment = true;
+        if (inObsidianComment) inObsidianComment = !normalized.includes("%%");
+        else {
+          const obsidianOpens = indexOutside(normalized, "%%", 0, code);
+          if (obsidianOpens !== -1 && normalized.indexOf("%%", obsidianOpens + 2) === -1) inObsidianComment = true;
         }
       }
     }
@@ -360,7 +366,14 @@ function markdownLines(source: string): MarkdownLine[] {
   return lines;
 }
 
-function inlineCodeRanges(lines: MarkdownLine[]): SourceRange[] {
+// Where `marker` first appears from `from` on, outside the given ranges; -1 if nowhere.
+function indexOutside(text: string, marker: string, from: number, ranges: SourceRange[]): number {
+  let index = text.indexOf(marker, from);
+  while (index !== -1 && positionInRanges(index, ranges)) index = text.indexOf(marker, index + 1);
+  return index;
+}
+
+export function inlineCodeRanges(lines: MarkdownLine[]): SourceRange[] {
   const runs: Array<SourceRange & { length: number; segment: number }> = [];
   let segment = 0;
   for (const line of lines) {
@@ -411,10 +424,14 @@ function inlineCodeRanges(lines: MarkdownLine[]): SourceRange[] {
 
 function parseDefinitionsFromLines(lines: MarkdownLine[]): Map<string, FootnoteDefinition> {
   const definitions = new Map<string, FootnoteDefinition>();
-  for (let index = 0; index < lines.length; index++) {
+  let index = 0;
+  while (index < lines.length) {
     const line = lines[index];
+    index++;
     if (line === undefined || line.excluded) continue;
-    const match = line.content.match(/^(\[\^([^\]\r\n]+)\]:[ \t]*)(.*)$/);
+    // The body may not start with a space: the prefix takes them all, so
+    // a line that fails to match doesn't backtrack through them.
+    const match = /^(\[\^([^\]\r\n]+)\]:[ \t]*)((?![ \t]).*)$/.exec(line.content);
     if (match === null) continue;
     const prefix = match[1];
     const id = match[2];
@@ -424,7 +441,8 @@ function parseDefinitionsFromLines(lines: MarkdownLine[]): Map<string, FootnoteD
     const bodyLines = [firstBodyLine];
     let to = line.from + line.content.length;
     let pendingBlankLines = 0;
-    for (let continuationIndex = index + 1; continuationIndex < lines.length; continuationIndex++) {
+    // A definition ends at its last indented line; the scan resumes after it.
+    for (let continuationIndex = index; continuationIndex < lines.length; continuationIndex++) {
       const continuation = lines[continuationIndex];
       if (continuation === undefined || continuation.excluded) break;
       if (continuation.content.trim() === "") {
@@ -438,7 +456,7 @@ function parseDefinitionsFromLines(lines: MarkdownLine[]): Map<string, FootnoteD
       }
       bodyLines.push(continuation.content.replace(/^(?:\t| {1,4})/, ""));
       to = continuation.from + continuation.content.length;
-      index = continuationIndex;
+      index = continuationIndex + 1;
     }
 
     definitions.set(id, {
@@ -451,7 +469,7 @@ function parseDefinitionsFromLines(lines: MarkdownLine[]): Map<string, FootnoteD
   return definitions;
 }
 
-function parseDefinitions(source: string): Map<string, FootnoteDefinition> {
+export function parseDefinitions(source: string): Map<string, FootnoteDefinition> {
   return parseDefinitionsFromLines(markdownLines(source));
 }
 
@@ -460,9 +478,11 @@ function referencesFromLines(lines: MarkdownLine[], definitions: Map<string, Foo
   const codeRanges = inlineCodeRanges(lines);
   for (const line of lines) {
     if (line.excluded) continue;
-    const pattern = /\[\^([^\]\r\n]+)\](?!:)/g;
+    const pattern = /\[\^([^\]\r\n]+)\]/g;
     let match: RegExpExecArray | null;
     while ((match = pattern.exec(line.content)) !== null) {
+      // `[^id]:` opens a definition only at the start of a line.
+      if (match.index === 0 && line.content[match[0].length] === ":") continue;
       const id = match[1];
       const from = line.from + match.index;
       if (id === undefined || !definitions.has(id) || positionInRanges(from, codeRanges)) continue;
@@ -472,7 +492,7 @@ function referencesFromLines(lines: MarkdownLine[], definitions: Map<string, Foo
   return references;
 }
 
-function parsedFootnotes(source: string, excludedAt?: (position: number) => boolean): ParsedFootnotes {
+export function parsedFootnotes(source: string, excludedAt?: (position: number) => boolean): ParsedFootnotes {
   const lines = markdownLines(source);
   // Definition markers are already filtered at line level. Their body may
   // legitimately begin with inline code or an escaped character, so applying
@@ -511,7 +531,7 @@ function syntaxExclusions(state: EditorState): SourceRange[] {
   return ranges.sort((a, b) => a.from - b.from);
 }
 
-function positionInRanges(position: number, ranges: SourceRange[]): boolean {
+export function positionInRanges(position: number, ranges: SourceRange[]): boolean {
   let low = 0;
   let high = ranges.length - 1;
   while (low <= high) {
@@ -525,13 +545,13 @@ function positionInRanges(position: number, ranges: SourceRange[]): boolean {
   return false;
 }
 
-function isEscaped(source: string, position: number): boolean {
+export function isEscaped(source: string, position: number): boolean {
   let slashes = 0;
   for (let index = position - 1; index >= 0 && source[index] === "\\"; index--) slashes++;
   return slashes % 2 === 1;
 }
 
-function serializeDefinition(text: string): string {
+export function serializeDefinition(text: string): string {
   return text.replace(/\r/g, "").trim().split("\n").join("\n    ");
 }
 
@@ -677,7 +697,7 @@ function layoutRoot(
   // result. This keeps one crowded paragraph from forcing a layout per note.
   for (const note of notes) {
     const anchor = note.parentElement;
-    if (anchor === null || !anchor.isConnected) continue;
+    if (anchor?.isConnected !== true) continue;
     const block = contentBlock(anchor);
     if (block === null) continue;
 
@@ -788,7 +808,7 @@ function layoutRoot(
   for (const note of mountedNotes) syncPinControl(note, pinned(note));
 }
 
-function resolveRenderedId(sup: HTMLElement, order: string[], idsByLength: string[]): string | null {
+export function resolveRenderedId(sup: HTMLElement, order: string[], idsByLength: string[]): string | null {
   const anchor = sup.querySelector<HTMLAnchorElement>("a");
   const rawCandidates = [
     anchor?.dataset["footref"] ?? "",
@@ -804,12 +824,12 @@ function resolveRenderedId(sup: HTMLElement, order: string[], idsByLength: strin
     }
   }
 
-  const displayed = Number.parseInt(sup.textContent?.match(/\d+/)?.[0] ?? "", 10);
+  const displayed = Number.parseInt(/\d+/.exec(sup.textContent)?.[0] ?? "", 10);
   return Number.isFinite(displayed) ? (order[displayed - 1] ?? null) : null;
 }
 
-function renderedFootnoteNumber(sup: HTMLElement): number | null {
-  const displayed = Number.parseInt(sup.querySelector("a")?.textContent?.match(/\d+/)?.[0] ?? "", 10);
+export function renderedFootnoteNumber(sup: HTMLElement): number | null {
+  const displayed = Number.parseInt(/\d+/.exec(sup.querySelector("a")?.textContent ?? "")?.[0] ?? "", 10);
   return Number.isFinite(displayed) ? displayed : null;
 }
 
@@ -843,6 +863,7 @@ function editorSourcePath(state: EditorState): string {
 
 interface NoteRenderer {
   render: (text: string) => Promise<void>;
+  show: (text: string) => void;
   cancel: () => void;
 }
 
@@ -894,7 +915,14 @@ function createNoteRenderer(
       });
   };
 
-  return { render, cancel };
+  // Renders without waiting; a failure is logged rather than left unhandled.
+  const show = (text: string): void => {
+    render(text).catch((error: unknown) => {
+      console.error("Micropatches (footnote-sidenotes): rendering a footnote failed", error);
+    });
+  };
+
+  return { render, show, cancel };
 }
 
 interface InlineEditorOptions {
@@ -977,7 +1005,13 @@ function attachInlineEditor(options: InlineEditorOptions): void {
       }
     };
 
-    textarea.addEventListener("blur", () => finish(true), { once: true });
+    textarea.addEventListener(
+      "blur",
+      () => {
+        finish(true);
+      },
+      { once: true },
+    );
     textarea.addEventListener("keydown", (keyEvent) => {
       keyEvent.stopPropagation();
       if (keyEvent.key === "Escape") {
@@ -1026,19 +1060,21 @@ class FootnoteWidget extends WidgetType {
     anchor.appendChild(note);
     this.setupNote(note, numberButton, this.sourcePath, this.id);
 
-    const renderer = createNoteRenderer(this.plugin, this.plugin, content, this.sourcePath, () =>
-      this.scheduleLayout(view.dom.win),
-    );
+    const renderer = createNoteRenderer(this.plugin, this.plugin, content, this.sourcePath, () => {
+      this.scheduleLayout(view.dom.win);
+    });
     this.renderer = renderer;
-    void renderer.render(this.text);
+    renderer.show(this.text);
     attachInlineEditor({
       note,
       content,
       id: this.id,
       text: this.text,
-      scheduleLayout: () => this.scheduleLayout(view.dom.win),
+      scheduleLayout: () => {
+        this.scheduleLayout(view.dom.win);
+      },
       cancelRender: renderer.cancel,
-      render: (text) => void renderer.render(text),
+      render: renderer.show,
       preventMouseDownDefault: true,
       commit: (replacement) => {
         const definition = parseDefinitions(view.state.doc.toString()).get(this.id);
@@ -1090,6 +1126,8 @@ export const footnoteSidenotes: Patch = {
     const parsedByPath = new Map<string, { source: string; parsed: ParsedFootnotes }>();
     const sourceByPath = new Map<string, { mtime: number; source: Promise<string> }>();
     let disposed = false;
+    // A function, so TypeScript doesn't assume it stays false across an await.
+    const isDisposed = (): boolean => disposed;
     let version = 0;
     const side = (): Side => {
       const value = ctx.getConfig<unknown>(SIDE_KEY, DEFAULT_SIDE);
@@ -1173,7 +1211,9 @@ export const footnoteSidenotes: Patch = {
       if (disposed || frames.has(win)) return;
       frames.set(
         win,
-        win.requestAnimationFrame(() => layoutWindow(win)),
+        win.requestAnimationFrame(() => {
+          layoutWindow(win);
+        }),
       );
     };
 
@@ -1201,7 +1241,9 @@ export const footnoteSidenotes: Patch = {
         suppressPointerPeek = false;
         updatePeek();
       });
-      numberButton.addEventListener("mousedown", (event) => event.stopPropagation());
+      numberButton.addEventListener("mousedown", (event) => {
+        event.stopPropagation();
+      });
       numberButton.addEventListener("click", (event) => {
         event.preventDefault();
         event.stopPropagation();
@@ -1238,7 +1280,9 @@ export const footnoteSidenotes: Patch = {
       style.id = STYLE_ID;
       style.textContent = CSS;
       win.document.head.appendChild(style);
-      const onResize = (): void => scheduleLayout(win);
+      const onResize = (): void => {
+        scheduleLayout(win);
+      };
       const sectionObserver = new (win.document.defaultView ?? window).ResizeObserver((entries) => {
         if (ctx.isEnabled() && entries.some((entry) => entry.contentRect.width > 0 && entry.contentRect.height > 0)) {
           scheduleLayout(win);
@@ -1270,6 +1314,14 @@ export const footnoteSidenotes: Patch = {
     };
 
     setupWindow(window);
+    // Popouts that were open before this loaded (the plugin enabled later)
+    // fire no "window-open". Once unloaded, not even the main window is set up.
+    plugin.app.workspace.onLayoutReady(() => {
+      if (!windows.has(window)) return;
+      plugin.app.workspace.iterateAllLeaves((leaf) => {
+        setupWindow(leaf.view.containerEl.win);
+      });
+    });
     plugin.registerEvent(
       plugin.app.workspace.on("window-open", (_workspaceWindow, win) => {
         setupWindow(win);
@@ -1297,7 +1349,7 @@ export const footnoteSidenotes: Patch = {
       if (definitions.size === 0) return Decoration.none;
       const numbers = new Map(order.map((id, index) => [id, String(index + 1)]));
       const sourcePath = editorSourcePath(view.state);
-      const ranges: ReturnType<Decoration["range"]>[] = [];
+      const ranges: Array<ReturnType<Decoration["range"]>> = [];
       const rendered = new Set<string>();
       for (const reference of references) {
         const { id } = reference;
@@ -1360,10 +1412,10 @@ export const footnoteSidenotes: Patch = {
       const abstractFile = plugin.app.vault.getAbstractFileByPath(mdCtx.sourcePath);
       if (!(abstractFile instanceof TFile)) return;
       const source = await readFootnoteSource(abstractFile);
-      if (disposed || !ctx.isEnabled()) return;
+      if (isDisposed() || !ctx.isEnabled()) return;
       const { definitions, order, idsByLength, numberById } = cachedFootnotes(mdCtx.sourcePath, source);
       const rendered = new Set<string>();
-      const renders: Promise<void>[] = [];
+      const renders: Array<Promise<void>> = [];
       const ownerWindow = el.ownerDocument.defaultView ?? window;
 
       for (const sup of refs) {
@@ -1392,9 +1444,11 @@ export const footnoteSidenotes: Patch = {
           content,
           id,
           text: definition.text,
-          scheduleLayout: () => scheduleLayout(ownerWindow),
+          scheduleLayout: () => {
+            scheduleLayout(ownerWindow);
+          },
           cancelRender: renderer.cancel,
-          render: (text) => void renderer.render(text),
+          render: renderer.show,
           respectSelection: true,
           commit: (replacement) =>
             plugin.app.vault.process(abstractFile, (currentSource) => {
@@ -1405,7 +1459,7 @@ export const footnoteSidenotes: Patch = {
         });
       }
       await Promise.all(renders);
-      if (disposed) return;
+      if (isDisposed()) return;
       if (!ctx.isEnabled()) {
         for (const note of Array.from(el.querySelectorAll<HTMLElement>(`.${NOTE_CLASS}`))) note.remove();
         for (const anchor of Array.from(el.querySelectorAll<HTMLElement>(`.${ANCHOR_CLASS}`))) {
@@ -1421,7 +1475,9 @@ export const footnoteSidenotes: Patch = {
       const windowState = windows.get(ownerWindow);
       if (windowState === undefined) return;
       const sectionWatcher = new MarkdownRenderChild(el);
-      sectionWatcher.register(() => windowState.sectionObserver.unobserve(el));
+      sectionWatcher.register(() => {
+        windowState.sectionObserver.unobserve(el);
+      });
       mdCtx.addChild(sectionWatcher);
       windowState.sectionObserver.observe(el);
       if (el.isConnected) scheduleLayout(ownerWindow);
@@ -1445,7 +1501,9 @@ export const footnoteSidenotes: Patch = {
         disposed = true;
         for (const win of Array.from(windows.keys())) teardownWindow(win);
       },
-      onToggle: (): void => refresh(),
+      onToggle: (): void => {
+        refresh();
+      },
       onConfigChange: (key: string): void => {
         if (key === SIDE_KEY || key === DISTANCE_KEY) {
           version++;

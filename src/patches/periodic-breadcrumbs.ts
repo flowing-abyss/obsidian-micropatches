@@ -2,7 +2,7 @@ import {
   type App,
   type EventRef,
   MarkdownView,
-  moment,
+  type moment,
   Notice,
   type Plugin,
   type TAbstractFile,
@@ -13,7 +13,8 @@ import type { Patch, PatchContext, PatchHandle } from "../patch";
 
 type Granularity = "day" | "week" | "month" | "quarter" | "year";
 type Direction = "backwards" | "forwards";
-type PeriodDate = ReturnType<typeof moment>;
+// obsidian.d.ts imports moment as a namespace, so the callable is on `default`.
+type PeriodDate = ReturnType<(typeof moment)["default"]>;
 
 interface PeriodicNoteMetadata {
   calendarSet: string;
@@ -85,7 +86,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
-function getPeriodicNotesApi(app: App): PeriodicNotesApi | null {
+export function getPeriodicNotesApi(app: App): PeriodicNotesApi | null {
   const registry = (app as AppWithCommunityPlugins).plugins;
   const candidate = registry?.getPlugin("periodic-notes");
   if (!isRecord(candidate)) return null;
@@ -112,7 +113,7 @@ function shiftedDate(metadata: PeriodicNoteMetadata, amount: -1 | 1): PeriodDate
   return metadata.date.clone().add(amount, metadata.granularity).startOf(metadata.granularity);
 }
 
-function basename(path: string): string {
+export function basename(path: string): string {
   const name = path.slice(path.lastIndexOf("/") + 1);
   return name.endsWith(".md") ? name.slice(0, -3) : name;
 }
@@ -122,8 +123,17 @@ function configForMetadata(api: PeriodicNotesApi, metadata: PeriodicNoteMetadata
   return calendarSet?.[metadata.granularity] ?? null;
 }
 
-function isInConfiguredFolder(filePath: string, configuredFolder: string): boolean {
-  const folder = configuredFolder.replace(/^\/+|\/+$/g, "");
+// A loop, as /\/+$/ backtracks.
+export function trimSlashes(text: string): string {
+  let start = 0;
+  let end = text.length;
+  while (start < end && text[start] === "/") start++;
+  while (end > start && text[end - 1] === "/") end--;
+  return text.slice(start, end);
+}
+
+export function isInConfiguredFolder(filePath: string, configuredFolder: string): boolean {
+  const folder = trimSlashes(configuredFolder);
   if (folder === "") return true;
   const separator = filePath.lastIndexOf("/");
   const fileFolder = separator === -1 ? "" : filePath.slice(0, separator);
@@ -142,7 +152,7 @@ function activeCalendarSetId(api: PeriodicNotesApi): string | null {
   return typeof activeSet === "string" ? activeSet : (activeSet?.id ?? null);
 }
 
-function findAllConfiguredMetadata(api: PeriodicNotesApi, filePath: string): PeriodicNoteMetadata[] {
+export function findAllConfiguredMetadata(api: PeriodicNotesApi, filePath: string): PeriodicNoteMetadata[] {
   const calendarSets = api.calendarSetManager.getCalendarSets();
   const activeSet = activeCalendarSetId(api);
   const orderedSets = [
@@ -159,8 +169,10 @@ function findConfiguredMetadata(api: PeriodicNotesApi, filePath: string): Period
   return findAllConfiguredMetadata(api, filePath)[0] ?? null;
 }
 
-function labelForDate(api: PeriodicNotesApi, metadata: PeriodicNoteMetadata, date: PeriodDate): string {
-  const format = configForMetadata(api, metadata)?.format || DEFAULT_FORMATS[metadata.granularity];
+export function labelForDate(api: PeriodicNotesApi, metadata: PeriodicNoteMetadata, date: PeriodDate): string {
+  const configured = configForMetadata(api, metadata)?.format;
+  const format =
+    typeof configured === "string" && configured !== "" ? configured : DEFAULT_FORMATS[metadata.granularity];
   return basename(date.format(format));
 }
 
@@ -238,9 +250,11 @@ export const periodicBreadcrumbs: Patch = {
               isConfiguredMetadata(api, metadata) &&
               plugin.app.vault.getFileByPath(metadata.filePath) !== null,
           )
-          .sort(
-            (left, right) => left.date.valueOf() - right.date.valueOf() || left.filePath.localeCompare(right.filePath),
-          );
+          .sort((left, right) => {
+            const byDate = left.date.valueOf() - right.date.valueOf();
+            if (byDate !== 0 && !Number.isNaN(byDate)) return byDate;
+            return left.filePath.localeCompare(right.filePath);
+          });
         configuredIndexes.set(key, notes);
       }
       const currentIndex = notes.findIndex(({ filePath }) => filePath === current.filePath);
@@ -252,12 +266,7 @@ export const periodicBreadcrumbs: Patch = {
       if (!isCurrentNavigation(leaf, state)) return;
       const api = getPeriodicNotesApi(plugin.app);
       const view = leaf.view;
-      if (
-        api === null ||
-        !(view instanceof MarkdownView) ||
-        view.file === null ||
-        view.file.path !== state.expectedPath
-      ) {
+      if (api === null || !(view instanceof MarkdownView) || view.file?.path !== state.expectedPath) {
         navigation.delete(leaf);
         return;
       }
@@ -275,7 +284,7 @@ export const periodicBreadcrumbs: Patch = {
         if (activeCalendarSetId(api) !== current.calendarSet) return;
         const nextDate = shiftedDate(current, 1);
         target = api.getPeriodicNote(current.granularity, nextDate);
-        if (target === null) target = await api.createPeriodicNote(current.granularity, nextDate);
+        target ??= await api.createPeriodicNote(current.granularity, nextDate);
       }
 
       const liveView = leaf.view;
@@ -301,8 +310,7 @@ export const periodicBreadcrumbs: Patch = {
       let state = navigation.get(leaf);
       const livePath = leaf.view instanceof MarkdownView ? leaf.view.file?.path : undefined;
       if (
-        state === undefined ||
-        state.generation !== navigationGeneration ||
+        state?.generation !== navigationGeneration ||
         (sourcePath !== state.expectedPath && livePath === sourcePath)
       ) {
         state = { expectedPath: sourcePath, generation: navigationGeneration, tail: Promise.resolve() };
@@ -310,17 +318,18 @@ export const periodicBreadcrumbs: Patch = {
       }
 
       const currentState = state;
-      const next = currentState.tail
+      const next: Promise<void> = currentState.tail
         .then(() => navigate(leaf, currentState, direction))
         .catch((error: unknown) => {
           if (!isCurrentNavigation(leaf, currentState)) return;
           console.error("Micropatches (periodic-breadcrumbs): navigation failed", error);
           new Notice("Couldn't open the periodic note.");
+        })
+        .then(() => {
+          // Done, unless another navigation was queued behind this one.
+          if (navigation.get(leaf) === currentState && currentState.tail === next) navigation.delete(leaf);
         });
       currentState.tail = next;
-      void next.then(() => {
-        if (navigation.get(leaf) === currentState && currentState.tail === next) navigation.delete(leaf);
-      });
     };
 
     const renderLeaf = (leaf: WorkspaceLeaf): void => {
@@ -376,17 +385,23 @@ export const periodicBreadcrumbs: Patch = {
         PREVIOUS_CLASS,
         previous === null ? `No previous ${kind} note` : `Open ${previousLabel}`,
         previous === null,
-        () => enqueueNavigation(leaf, current.filePath, "backwards"),
+        () => {
+          enqueueNavigation(leaf, current.filePath, "backwards");
+        },
       );
       container.prepend(previousButton);
 
+      let nextTooltip = `Open ${nextLabel}`;
+      if (next === null) nextTooltip = canCreate ? `Create ${nextLabel}` : `No next ${kind} note`;
       makeButton(
         container,
         nextLabel,
-        `${NEXT_CLASS}${next === null && canCreate ? ` ${CREATE_CLASS}` : ""}`,
-        next === null ? (canCreate ? `Create ${nextLabel}` : `No next ${kind} note`) : `Open ${nextLabel}`,
+        next === null && canCreate ? `${NEXT_CLASS} ${CREATE_CLASS}` : NEXT_CLASS,
+        nextTooltip,
         next === null && !canCreate,
-        () => enqueueNavigation(leaf, current.filePath, "forwards"),
+        () => {
+          enqueueNavigation(leaf, current.filePath, "forwards");
+        },
       );
     };
 
@@ -452,7 +467,11 @@ export const periodicBreadcrumbs: Patch = {
 
     plugin.registerEvent(plugin.app.workspace.on("file-open", scheduleActiveLeaf));
     plugin.registerEvent(plugin.app.workspace.on("active-leaf-change", scheduleRefresh));
-    plugin.registerEvent(plugin.app.workspace.on("layout-change", () => scheduleRefresh()));
+    plugin.registerEvent(
+      plugin.app.workspace.on("layout-change", () => {
+        scheduleRefresh();
+      }),
+    );
     plugin.registerEvent(plugin.app.vault.on("delete", scheduleIfPeriodic));
     plugin.registerEvent(plugin.app.vault.on("rename", scheduleRename));
 
@@ -465,7 +484,9 @@ export const periodicBreadcrumbs: Patch = {
       }),
     );
 
-    plugin.app.workspace.onLayoutReady(() => scheduleRefresh());
+    plugin.app.workspace.onLayoutReady(() => {
+      scheduleRefresh();
+    });
     scheduleRefresh();
 
     return {
