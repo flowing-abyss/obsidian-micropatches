@@ -46,10 +46,14 @@ body.micropatches-hide-traffic-lights:is(.mod-windows, .mod-linux).is-hidden-fra
    working, it just happens instantly. This has to win over every other
    transition/animation rule in core, the active theme, snippets, and other
    plugins, none of which this stylesheet can out-specificity in advance, so
-   !important here is load-bearing rather than a shortcut. */
+   !important here is load-bearing rather than a shortcut.
+   Editing Toolbar dropdowns sit a gap away from their button and stay open
+   across it only while their `visibility` transition runs out, so they keep
+   their own duration. */
 body.micropatches-instant-ui
   *:not(
     :is(
+      [class^="editingToolbarCommandsubItem"] > .subitem,
       .loader-spinner svg,
       .loader-cube,
       .sk-cube,
