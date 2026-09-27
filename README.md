@@ -10,29 +10,31 @@ A small Obsidian plugin with targeted fixes and quality of life tweaks.
 
 ## Patches
 
+Click a patch name for a screenshot or short demo.
+
 - **Editor**
-  - **Scroll offset**. Keeps space between the cursor and the edge of the editor.
-  - **Code block language and title**. Lets themes style code blocks by language, title and plain-text state.
-  - **Copy inline code on click**. Click inline code to copy it. Copying selected text is optional.
-  - **Footnotes in the margin**. Shows editable footnotes beside the note.
+  - **[Scroll offset](assets/demos/scroll-offset.png)**. Keeps space between the cursor and the edge of the editor.
+  - **[Code block language and title](assets/demos/code-block-title.png)**. Lets themes style code blocks by language, title and plain-text state.
+  - **[Copy inline code on click](assets/demos/inline-code-copy.gif)**. Click inline code to copy it. Copying selected text is optional.
+  - **[Footnotes in the margin](assets/demos/footnote-sidenotes.png)**. Shows editable footnotes beside the note.
 - **Navigation**
-  - **Periodic note breadcrumbs**. Adds links to the previous and next period. Requires Periodic Notes 1.0.0 or newer.
-  - **Backlinks defaults**. Sets the default display and filters for backlinks.
-  - **Heading backlinks**. Shows links to each heading. Can also update incoming links when a heading is renamed.
-  - **Outline follows viewport**. Keeps the Outline on the section you are reading or editing.
-  - **Local graph in notes**. Shows a local graph below the title or above backlinks.
+  - **[Periodic note breadcrumbs](assets/demos/periodic-breadcrumbs.gif)**. Adds links to the previous and next period. Requires Periodic Notes 1.0.0 or newer.
+  - **[Backlinks defaults](assets/demos/backlinks-defaults.png)**. Sets the default display and filters for backlinks.
+  - **[Heading backlinks](assets/demos/heading-backlinks.png)**. Shows links to each heading. Can also update incoming links when a heading is renamed.
+  - **[Outline follows viewport](assets/demos/outline-viewport.gif)**. Keeps the Outline on the section you are reading or editing.
+  - **[Local graph in notes](assets/demos/note-local-graph.png)**. Shows a local graph below the title or above backlinks.
 - **Interface**
-  - **Hide traffic lights**. Hides desktop window buttons and their reserved space.
-  - **Hot corners**. Runs a command when you hold a modifier key and move into a window corner.
-  - **Double-tap commands**. Runs a command when you tap a modifier key twice.
-  - **Focus mode command**. Hides the surrounding interface and dims text outside the current line.
+  - **[Hide traffic lights](assets/demos/hide-traffic-lights.png)**. Hides desktop window buttons and their reserved space.
+  - **[Hot corners](assets/demos/hot-corners.gif)**. Runs a command when you hold a modifier key and move into a window corner.
+  - **[Double-tap commands](assets/demos/double-tap-commands.gif)**. Runs a command when you tap a modifier key twice.
+  - **[Focus mode command](assets/demos/focus-mode.gif)**. Hides the surrounding interface and dims text outside the current line.
 - **Performance**
-  - **Cursor repeat throttle**. Prevents freezes when an arrow key is held down.
-  - **Instant UI**. Removes most interface animations while keeping loading indicators.
+  - **[Cursor repeat throttle](assets/demos/cursor-repeat-throttle.gif)**. Prevents freezes when an arrow key is held down.
+  - **[Instant UI](assets/demos/instant-ui.gif)**. Removes most interface animations while keeping loading indicators.
 - **Bases**
-  - **Bases auto search**. Opens the search bar when a base is first shown.
-  - **Bases column search**. Click a column header to filter its values.
-  - **Bases groups**. Fold table groups and drag rows between them, with a preview of where they will go.
-  - **Bases pagination**. Adds page buttons to bases with a result limit.
+  - **[Bases auto search](assets/demos/bases-auto-search.gif)**. Opens the search bar when a base is first shown.
+  - **[Bases column search](assets/demos/bases-column-search.gif)**. Click a column header to filter its values.
+  - **[Bases groups](assets/demos/bases-groups.gif)**. Fold table groups and drag rows between them, with a preview of where they will go.
+  - **[Bases pagination](assets/demos/bases-pagination.gif)**. Adds page buttons to bases with a result limit.
 
 Each patch can be switched on or off separately in Settings or with its `Toggle …` command, no reload needed. All patches are disabled by default.
