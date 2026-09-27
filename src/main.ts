@@ -11,6 +11,7 @@ import type { Patch, PatchContext, PatchHandle } from "./patch";
 import { backlinksDefaults } from "./patches/backlinks-defaults";
 import { basesAutoSearch } from "./patches/bases-auto-search";
 import { basesColumnSearch } from "./patches/bases-column-search";
+import { basesGroups } from "./patches/bases-groups";
 import { basesPagination } from "./patches/bases-pagination";
 import { codeBlockTitle } from "./patches/code-block-title";
 import { cursorRepeatThrottle } from "./patches/cursor-repeat-throttle";
@@ -27,26 +28,34 @@ import { outlineViewport } from "./patches/outline-viewport";
 import { periodicBreadcrumbs } from "./patches/periodic-breadcrumbs";
 import { scrollOffset } from "./patches/scroll-offset";
 
-const PATCHES: Patch[] = [
-  cursorRepeatThrottle,
-  scrollOffset,
-  hideTrafficLights,
-  backlinksDefaults,
-  basesAutoSearch,
-  instantUi,
-  codeBlockTitle,
-  inlineCodeCopy,
-  footnoteSidenotes,
-  headingBacklinks,
-  periodicBreadcrumbs,
-  outlineViewport,
-  noteLocalGraph,
-  hotCorners,
-  doubleTapCommands,
-  focusMode,
-  basesColumnSearch,
-  basesPagination,
+const PATCH_GROUPS: Array<{ name: string; description: string; patches: Patch[] }> = [
+  {
+    name: "Editor",
+    description: "Writing, code blocks and footnotes.",
+    patches: [scrollOffset, codeBlockTitle, inlineCodeCopy, footnoteSidenotes],
+  },
+  {
+    name: "Navigation",
+    description: "Links, breadcrumbs, outlines and graphs.",
+    patches: [periodicBreadcrumbs, backlinksDefaults, headingBacklinks, outlineViewport, noteLocalGraph],
+  },
+  {
+    name: "Interface",
+    description: "Window controls, shortcuts and focus.",
+    patches: [hideTrafficLights, hotCorners, doubleTapCommands, focusMode],
+  },
+  {
+    name: "Performance",
+    description: "Arrow keys and interface animations.",
+    patches: [cursorRepeatThrottle, instantUi],
+  },
+  {
+    name: "Bases",
+    description: "Search, groups and pagination.",
+    patches: [basesAutoSearch, basesColumnSearch, basesGroups, basesPagination],
+  },
 ];
+const PATCHES = PATCH_GROUPS.flatMap((group) => group.patches);
 
 interface MicropatchesSettings {
   enabled: Record<string, boolean>;
@@ -157,7 +166,12 @@ class MicropatchesSettingTab extends PluginSettingTab {
   }
 
   override getSettingDefinitions(): SettingDefinitionItem[] {
-    return PATCHES.map((patch) => this.getPatchSettingDefinition(patch));
+    return PATCH_GROUPS.map((group) => ({
+      type: "page",
+      name: group.name,
+      desc: group.description,
+      items: group.patches.map((patch) => this.getPatchSettingDefinition(patch)),
+    }));
   }
 
   private getPatchSettingDefinition(patch: Patch): SettingDefinitionGroup {

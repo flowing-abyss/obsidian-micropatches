@@ -10,13 +10,13 @@ An Obsidian plugin made of small, independent patches. `pnpm verify` is the qual
 Obsidian must be running with Settings → General → Command line interface enabled.
 
 ```sh
-obsidian vault="Obsidian" eval code="(async () => { … })()"
-obsidian vault="Obsidian" dev:dom selector=".bases-toolbar" text
-obsidian vault="Obsidian" dev:css selector=".bases-toolbar" prop=gap
-obsidian vault="Obsidian" dev:screenshot path=/tmp/shot.png
-obsidian vault="Obsidian" dev:errors
-obsidian vault="Obsidian" dev:console   # after dev:debug on
-obsidian vault="Obsidian" devtools
+obsidian vault="dev-vault-micropatches" eval code="(async () => { … })()"
+obsidian vault="dev-vault-micropatches" dev:dom selector=".bases-toolbar" text
+obsidian vault="dev-vault-micropatches" dev:css selector=".bases-toolbar" prop=gap
+obsidian vault="dev-vault-micropatches" dev:screenshot path=/tmp/shot.png
+obsidian vault="dev-vault-micropatches" dev:errors
+obsidian vault="dev-vault-micropatches" dev:console   # after dev:debug on
+obsidian vault="dev-vault-micropatches" devtools
 ```
 
 To install a build:
@@ -28,5 +28,3 @@ Useful in `eval`:
 
 - `app.plugins.plugins.micropatches.setPatchEnabled(id, true)` switches a patch.
 - `require("electron").remote.getCurrentWebContents().sendInputEvent(…)` sends trusted keys and mouse moves.
-
-Never change notes or `.base` files while testing. A plain click on a Bases table header sorts the table and saves that to the file.

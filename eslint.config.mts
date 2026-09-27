@@ -9,7 +9,7 @@ const source = ["src/**/*.ts"];
 const tests = ["src/**/*.test.ts"];
 
 export default [
-  { ignores: ["main.js", "coverage/**", "node_modules/**"] },
+  { ignores: ["main.js", "coverage/**", "node_modules/**", "dev-vault-micropatches/**"] },
   js.configs.recommended,
   {
     files: ["*.mjs"],

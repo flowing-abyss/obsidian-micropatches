@@ -20,6 +20,7 @@ coverage
 
 # obsidian
 data.json
+/dev-vault-micropatches/
 
 # macOS
 .DS_Store
