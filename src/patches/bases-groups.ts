@@ -944,7 +944,9 @@ export const basesGroups: Patch = {
       const editable = node.closest<HTMLElement>("[contenteditable]");
       if (
         (editable?.isContentEditable === true && editable.contains(node.doc.activeElement)) ||
-        node.closest("input, textarea, select, button, [role='checkbox'], .multi-select-pill-remove-button")
+        node.closest(
+          "a, .internal-link, input, textarea, select, button, [role='checkbox'], .multi-select-pill-remove-button",
+        )
       )
         return;
       const origin = node.closest<HTMLElement>(".bases-td");
@@ -1269,7 +1271,8 @@ export const basesGroups: Patch = {
       const onDragStart = (evt: DragEvent): void => {
         const node = evt.targetNode;
         if (!drag || !node || !drag.origin.contains(node)) return;
-        // Keep link dragging in the same pointer stream as ordinary cells.
+        // Keep native row dragging in the same pointer stream as ordinary cells.
+        // Links keep their native drag because pointerDown does not arm them.
         evt.preventDefault();
         evt.stopImmediatePropagation();
       };

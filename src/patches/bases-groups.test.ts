@@ -568,12 +568,12 @@ describe("group rendering and lifecycle", () => {
     expect(document.querySelector(`.${prefix}-preview`)).toBeNull();
   });
 
-  it("leaves clicks and small movements native, but takes over a dragged link", () => {
+  it("leaves clicks and small movements native, but takes over a dragged row", () => {
     const base = fakeBase(app);
     app.workspace.setLayoutReady__();
     const cell = base.view.rows[0]?.el.querySelector<HTMLElement>(".bases-td");
     if (!cell) throw new Error("Expected a row cell");
-    const link = cell.createSpan({ cls: "internal-link", text: "A", attr: { draggable: "true" } });
+    const grip = cell.createSpan({ text: "A", attr: { draggable: "true" } });
     const frames: FrameRequestCallback[] = [];
     vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => frames.push(callback));
     Object.defineProperty(document, "elementFromPoint", { value: () => null, configurable: true });
@@ -587,14 +587,14 @@ describe("group rendering and lifecycle", () => {
         clientX: x,
       });
     const down = pointer("pointerdown", 10);
-    link.dispatchEvent(down);
+    grip.dispatchEvent(down);
     expect(down.defaultPrevented).toBe(false);
     const smallMove = pointer("pointermove", 13);
     document.dispatchEvent(smallMove);
     expect(smallMove.defaultPrevented).toBe(false);
     expect(frames).toHaveLength(0);
     const start = new MouseEvent("dragstart", { bubbles: true, cancelable: true });
-    link.dispatchEvent(start);
+    grip.dispatchEvent(start);
     expect(start.defaultPrevented).toBe(true);
     document.dispatchEvent(pointer("pointermove", 30));
     expect(frames).toHaveLength(1);
@@ -603,18 +603,52 @@ describe("group rendering and lifecycle", () => {
     document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
     expect(document.querySelector(`.${prefix}-preview`)).toBeNull();
     const releaseClick = new MouseEvent("click", { bubbles: true, cancelable: true, detail: 1 });
-    link.dispatchEvent(releaseClick);
+    grip.dispatchEvent(releaseClick);
     expect(releaseClick.defaultPrevented).toBe(true);
-    link.dispatchEvent(pointer("pointerdown", 10));
+    grip.dispatchEvent(pointer("pointerdown", 10));
     document.dispatchEvent(pointer("pointerup", 10));
     const click = new MouseEvent("click", { bubbles: true, cancelable: true, detail: 1 });
-    link.dispatchEvent(click);
+    grip.dispatchEvent(click);
     expect(click.defaultPrevented).toBe(false);
     enabled = false;
     handle.onToggle?.(false);
     const nativeDrag = new MouseEvent("dragstart", { bubbles: true, cancelable: true });
-    link.dispatchEvent(nativeDrag);
+    grip.dispatchEvent(nativeDrag);
     expect(nativeDrag.defaultPrevented).toBe(false);
+  });
+
+  it.each(["span", "a"] as const)("preserves native %s link dragging to targets outside the table", (tag) => {
+    const base = fakeBase(app);
+    app.workspace.setLayoutReady__();
+    const cell = base.view.rows[0]?.el.querySelector<HTMLElement>(".bases-td");
+    if (!cell) throw new Error("Expected a row cell");
+    const link = cell.createEl(tag, {
+      ...(tag === "span" ? { cls: "internal-link" } : {}),
+      attr: { draggable: "true", href: "#A" },
+    });
+    const label = link.createSpan({ text: "A" });
+    const request = vi.spyOn(window, "requestAnimationFrame");
+    const onDragStart = vi.fn();
+    const controller = new AbortController();
+    document.addEventListener("dragstart", onDragStart, { signal: controller.signal });
+    try {
+      label.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, pointerId: 1, button: 0, clientX: 10 }));
+      const move = new PointerEvent("pointermove", { bubbles: true, cancelable: true, pointerId: 1, clientX: 30 });
+      document.dispatchEvent(move);
+      const start = new MouseEvent("dragstart", { bubbles: true, cancelable: true });
+      link.dispatchEvent(start);
+      expect(move.defaultPrevented).toBe(false);
+      expect(start.defaultPrevented).toBe(false);
+      expect(onDragStart).toHaveBeenCalledOnce();
+      expect(request).not.toHaveBeenCalled();
+      expect(document.querySelector(`.${prefix}-preview`)).toBeNull();
+      document.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, pointerId: 1, clientX: 30 }));
+      const click = new MouseEvent("click", { bubbles: true, cancelable: true, detail: 1 });
+      label.dispatchEvent(click);
+      expect(click.defaultPrevented).toBe(false);
+    } finally {
+      controller.abort();
+    }
   });
 
   it("preserves touch scrolling, modified selection, and editing controls", () => {
