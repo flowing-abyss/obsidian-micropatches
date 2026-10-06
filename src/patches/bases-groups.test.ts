@@ -275,6 +275,46 @@ function fakeBase(app: App) {
   return { controller, view, source, root };
 }
 
+function nativeBase(app: App) {
+  const base = fakeBase(app);
+  const folded = new Set<BasesEntryGroup>();
+  const view = Object.assign(base.view, {
+    isGroupCollapsed: (group: BasesEntryGroup) => folded.has(group),
+    toggleGroupCollapsed: vi.fn((group: BasesEntryGroup) => {
+      if (!folded.delete(group)) folded.add(group);
+      view.updateVirtualDisplay();
+    }),
+  });
+  const display = view.display.getMockImplementation();
+  const update = view.updateVirtualDisplay.getMockImplementation();
+  view.display.mockImplementation(() => {
+    display?.();
+    for (const [index, table] of view.groups.entries()) {
+      const group = base.source[index];
+      const heading = table.tableEl.querySelector<HTMLElement>(".bases-group-heading");
+      if (!group || !heading) continue;
+      heading.createDiv("collapse-indicator");
+      heading.addEventListener("click", (evt) => {
+        if (evt.defaultPrevented) return;
+        evt.preventDefault();
+        view.toggleGroupCollapsed(group);
+      });
+    }
+  });
+  view.updateVirtualDisplay.mockImplementation(() => {
+    update?.();
+    for (const [index, group] of base.source.entries()) {
+      const table = view.groups[index];
+      table?.tableEl.toggleClass("is-collapsed", folded.has(group));
+      if (!folded.has(group)) continue;
+      table?.tbodyEl.empty();
+      view.rows = view.rows.filter((row) => !group.entries.includes(row.entry));
+      view.displayed[index] = 0;
+    }
+  });
+  return { ...base, view, folded };
+}
+
 describe("group rendering and lifecycle", () => {
   let app: App;
   let enabled: boolean;
@@ -302,6 +342,71 @@ describe("group rendering and lifecycle", () => {
   const fold = (base: ReturnType<typeof fakeBase>, index = 0) => {
     base.view.groups[index]?.tableEl.querySelector<HTMLButtonElement>(`.${prefix}-toggle`)?.click();
   };
+
+  it("uses native headings and folding without substituting the query model", () => {
+    const base = nativeBase(app);
+    const cache = vi.spyOn(base.view.data, "groupedData", "get");
+    app.workspace.setLayoutReady__();
+    expect(base.root.querySelectorAll(".collapse-indicator")).toHaveLength(2);
+    expect(base.root.querySelector(`.${prefix}-toggle`)).toBeNull();
+    base.view.groups[0]?.tableEl.querySelector<HTMLElement>(".bases-group-heading")?.click();
+    expect(base.view.toggleGroupCollapsed).toHaveBeenCalledExactlyOnceWith(base.source[0]);
+    expect(base.view.displayed).toEqual([0, 1]);
+    base.view.updateVirtualDisplay();
+    expect(base.view.displayed).toEqual([0, 1]);
+    expect(cache.mock.results.every((result) => result.value === base.source)).toBe(true);
+    expect(base.root.querySelector(`.${prefix}-folded`)).toBeNull();
+    expect(base.source.map((group) => group.entries.length)).toEqual([1, 1]);
+  });
+
+  it("keeps the all-groups button in sync with native clicks and uses native toggles", () => {
+    const base = nativeBase(app);
+    app.workspace.setLayoutReady__();
+    const button = base.root.querySelector<HTMLButtonElement>(`.${prefix}-actions button`);
+    for (const table of base.view.groups) table.tableEl.querySelector<HTMLElement>(".bases-group-heading")?.click();
+    expect(base.view.displayed).toEqual([0, 0]);
+    expect(button?.getAttribute("aria-label")).toBe("Expand all groups");
+    button?.click();
+    expect(base.view.displayed).toEqual([1, 1]);
+    expect(button?.getAttribute("aria-label")).toBe("Collapse all groups");
+    base.view.groups[0]?.tableEl.querySelector<HTMLElement>(".bases-group-heading")?.click();
+    button?.click();
+    expect(base.view.displayed).toEqual([0, 0]);
+    expect(base.view.toggleGroupCollapsed).toHaveBeenCalledTimes(6);
+    expect(base.view.data.groupedData).toBe(base.source);
+  });
+
+  it("preserves native fold state across toggling, unloading and re-enabling the patch", () => {
+    const base = nativeBase(app);
+    const display = base.view.display;
+    const update = base.view.updateVirtualDisplay;
+    const group = base.source[0];
+    if (!group) throw new Error("Expected a group");
+    base.folded.add(group);
+    app.workspace.setLayoutReady__();
+    expect(base.view.displayed).toEqual([0, 1]);
+    enabled = false;
+    handle.onToggle?.(false);
+    expect(base.view.display).toBe(display);
+    expect(base.view.updateVirtualDisplay).toBe(update);
+    expect(base.view.displayed).toEqual([0, 1]);
+    expect(base.root.querySelector(`[class*="${prefix}"]`)).toBeNull();
+    enabled = true;
+    handle.onToggle?.(true);
+    expect(base.view.displayed).toEqual([0, 1]);
+    handle.cleanup();
+    expect(base.view.displayed).toEqual([0, 1]);
+    base.view.groups[0]?.tableEl.querySelector<HTMLElement>(".bases-group-heading")?.click();
+    expect(base.view.displayed).toEqual([1, 1]);
+  });
+
+  it("keeps legacy folding unless both native methods are available", () => {
+    const base = fakeBase(app);
+    Object.assign(base.view, { isGroupCollapsed: () => false });
+    app.workspace.setLayoutReady__();
+    fold(base);
+    expect(base.view.displayed).toEqual([0, 1]);
+  });
 
   it("folds formula groups in the render model, preserving query entries and prototypes", () => {
     const base = fakeBase(app);

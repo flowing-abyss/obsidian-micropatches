@@ -25,7 +25,7 @@ interface ViewConfigInternals extends BasesViewConfig {
 
 interface QueryController {
   viewContainerEl: HTMLElement;
-  resultsMenu: { toolbarItem: { button: { containerEl: HTMLElement } } };
+  resultsMenu?: { toolbarItem?: { containerEl?: HTMLElement; button?: { containerEl?: HTMLElement } } };
   getViewConfig(): ViewConfigInternals | null | undefined;
   notifyView(): void;
   addChild(child: Component): unknown;
@@ -55,17 +55,23 @@ const PAGER_CLASS = "micropatches-bases-pagination";
 // On the result count while a pager follows it.
 const PAGED_CLASS = "micropatches-bases-paginated";
 
+function resultCountEl(controller: Partial<QueryController>): HTMLElement | null {
+  const item = controller.resultsMenu?.toolbarItem;
+  // 1.14 moved the button's containerEl to the toolbar item itself.
+  const el = item?.containerEl ?? item?.button?.containerEl;
+  return el?.instanceOf(HTMLElement) === true ? el : null;
+}
+
 function isQueryController(value: unknown): value is QueryController {
   if (typeof value !== "object" || value === null) return false;
   const candidate = value as Partial<QueryController>;
-  const resultsMenu = candidate.resultsMenu as { toolbarItem?: { button?: { containerEl?: HTMLElement } } } | undefined;
   return (
     typeof candidate.getViewConfig === "function" &&
     typeof candidate.notifyView === "function" &&
     typeof candidate.addChild === "function" &&
     typeof candidate.removeChild === "function" &&
     candidate.viewContainerEl?.instanceOf(HTMLElement) === true &&
-    resultsMenu?.toolbarItem?.button?.containerEl?.instanceOf(HTMLElement) === true
+    resultCountEl(candidate) !== null
   );
 }
 
@@ -130,8 +136,7 @@ export const basesPagination: Patch = {
       controller.viewContainerEl.scrollTo({ top: 0 });
     };
 
-    const createPager = (controller: QueryController): Pager => {
-      const anchorEl = controller.resultsMenu.toolbarItem.button.containerEl;
+    const createPager = (controller: QueryController, anchorEl: HTMLElement): Pager => {
       // Created in the toolbar's own document: the base may be in a popout window.
       const el = (anchorEl.parentElement ?? anchorEl).createDiv(`bases-toolbar-item ${PAGER_CLASS}`);
       anchorEl.after(el);
@@ -181,10 +186,12 @@ export const basesPagination: Patch = {
     };
 
     const renderPager = (controller: QueryController, state: PageState): void => {
+      const anchorEl = resultCountEl(controller);
+      if (!anchorEl) return;
       let pager = pagers.get(controller);
       if (pager?.el.isConnected !== true) {
         removePager(controller);
-        pager = createPager(controller);
+        pager = createPager(controller, anchorEl);
         pagers.set(controller, pager);
       }
       pager.state = state;
@@ -253,7 +260,8 @@ export const basesPagination: Patch = {
     // by an earlier load of the plugin), which would otherwise never go.
     const refreshLimited = (): void => {
       for (const controller of controllers()) {
-        const anchorEl = controller.resultsMenu.toolbarItem.button.containerEl;
+        const anchorEl = resultCountEl(controller);
+        if (!anchorEl) continue;
         const tracked = pagers.get(controller)?.el;
         for (const el of Array.from(anchorEl.parentElement?.querySelectorAll<HTMLElement>(`.${PAGER_CLASS}`) ?? [])) {
           if (el !== tracked) el.remove();

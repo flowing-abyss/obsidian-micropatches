@@ -9,6 +9,7 @@ import { codeBlockTitle, FENCE, parseInfo } from "./code-block-title";
 class TestPlugin extends Plugin {}
 
 function setup(enabled = true) {
+  const state = { enabled };
   const app = App.createConfigured__();
   const plugin = new TestPlugin(app, {
     id: "test",
@@ -19,11 +20,18 @@ function setup(enabled = true) {
     description: "",
   });
   const handle = codeBlockTitle.register(plugin.asOriginalType2__(), {
-    isEnabled: () => enabled,
+    isEnabled: () => state.enabled,
     getConfig: <T>(_key: string, defaultValue: T) => defaultValue,
     setConfig: () => Promise.resolve(),
   });
-  return { app, plugin, handle };
+  return {
+    app,
+    plugin,
+    handle,
+    setEnabled: (value: boolean) => {
+      state.enabled = value;
+    },
+  };
 }
 
 function codeAttributes(el: Element): Record<string, string> {
@@ -307,5 +315,25 @@ describe("live preview", () => {
     const attributes = rows("```\nx\n```\n```js\ny\n```", false);
 
     expect(attributes()).toEqual([{}, {}, {}, {}, {}, {}]);
+  });
+
+  it("updates an unchanged viewport when toggled", () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { plugin, setEnabled } = setup();
+    view = new EditorView({
+      state: EditorState.create({
+        doc: '```js title="check.js"\nx\n```',
+        extensions: [hyperMd, plugin.editorExtensions__ as Extension[]],
+      }),
+      parent: document.body,
+    });
+    const attributes = () => Array.from(view?.contentDOM.querySelectorAll(".cm-line") ?? []).map(codeAttributes);
+    expect(attributes()[0]).toEqual({ "data-code-language": "js", "data-code-title": "check.js" });
+    setEnabled(false);
+    view.dispatch({});
+    expect(attributes()).toEqual([{}, {}, {}]);
+    setEnabled(true);
+    view.dispatch({});
+    expect(attributes()[0]).toEqual({ "data-code-language": "js", "data-code-title": "check.js" });
   });
 });

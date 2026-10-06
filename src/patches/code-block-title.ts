@@ -249,11 +249,16 @@ export const codeBlockTitle: Patch = {
     const viewPlugin = ViewPlugin.fromClass(
       class {
         decorations: DecorationSet;
+        enabled = ctx.isEnabled();
         constructor(view: EditorView) {
           this.decorations = decorate(view);
         }
         update(update: ViewUpdate): void {
-          if (update.docChanged || update.viewportChanged) this.decorations = decorate(update.view);
+          const enabled = ctx.isEnabled();
+          if (update.docChanged || update.viewportChanged || this.enabled !== enabled) {
+            this.enabled = enabled;
+            this.decorations = decorate(update.view);
+          }
         }
       },
       { decorations: (value) => value.decorations },

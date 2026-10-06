@@ -66,7 +66,11 @@ interface Config extends BasesViewConfig {
   groupBy?: { property: BasesPropertyId };
   getLimit?(): number;
 }
-interface Table {
+interface NativeFolding {
+  isGroupCollapsed(group: BasesEntryGroup): boolean;
+  toggleGroupCollapsed(group: BasesEntryGroup): void;
+}
+interface Table extends Partial<NativeFolding> {
   type: string;
   config: Config;
   data?: BasesQueryResult & { groupedDataCache?: BasesEntryGroup[] | null; applySort?(entries: BasesEntry[]): void };
@@ -97,6 +101,7 @@ interface State {
   view: Table;
   hook: Component;
   restore(): void;
+  nativeFolding: NativeFolding | null;
   folded: Set<string>;
   rows: WeakMap<HTMLElement, Entry>;
   tables: WeakMap<HTMLElement, { table: Table["groups"][number]; group: BasesEntryGroup }>;
@@ -368,6 +373,18 @@ function foldKey(state: State, group: BasesEntryGroup): string {
   return JSON.stringify([state.controller.viewName, state.view.config.groupBy?.property, keyOf(group.key)]);
 }
 
+function isFolded(state: State, group: BasesEntryGroup): boolean {
+  return state.nativeFolding?.isGroupCollapsed(group) ?? state.folded.has(foldKey(state, group));
+}
+
+function setFolded(state: State, group: BasesEntryGroup, folded: boolean): boolean {
+  if (isFolded(state, group) === folded) return false;
+  if (state.nativeFolding) state.nativeFolding.toggleGroupCollapsed(group);
+  else if (folded) state.folded.add(foldKey(state, group));
+  else state.folded.delete(foldKey(state, group));
+  return true;
+}
+
 function groupLabel(group: BasesEntryGroup): string {
   if (!group.key || group.key instanceof NullValue) return "Empty";
   if (group.key instanceof ListValue && group.key.length() === 0) return "Empty list";
@@ -425,7 +442,7 @@ function insertionPoint(
   const rowHeight = rendered > 0 ? rendered : fallback;
   const headerBottom = scrollEl.querySelector(".bases-thead")?.getBoundingClientRect().bottom ?? bounds.top;
   return {
-    folded: state.folded.has(foldKey(state, group)),
+    folded: isFolded(state, group),
     top: rect.top + index * rowHeight,
     left: Math.max(rect.left, bounds.left),
     width: Math.max(0, Math.min(rect.right, bounds.right) - Math.max(rect.left, bounds.left)),
@@ -610,7 +627,8 @@ function movePlan(app: App, drag: RowTarget, target: BasesEntryGroup): Plan {
   };
 }
 
-/** Group folding uses a temporary render model, leaving query results intact.
+/** Uses native group folding when available (Obsidian 1.14+), otherwise a
+ * temporary render model that leaves query results intact.
  * Moves write only frontmatter, after Bases itself has validated the prediction.
  */
 export const basesGroups: Patch = {
@@ -660,9 +678,7 @@ export const basesGroups: Patch = {
 
     const toggle = (state: State, group: BasesEntryGroup): void => {
       cancelDrag();
-      const key = foldKey(state, group);
-      if (state.folded.has(key)) state.folded.delete(key);
-      else state.folded.add(key);
+      setFolded(state, group, !isFolded(state, group));
       state.view.display();
     };
 
@@ -694,27 +710,13 @@ export const basesGroups: Patch = {
           state.toolbar?.createEl("button", { cls: "clickable-icon" }).addEventListener("click", () => {
             cancelDrag();
             const current = view.data?.groupedData ?? [];
-            const expand = current.every((group) => state.folded.has(foldKey(state, group)));
-            for (const group of current) {
-              if (expand) state.folded.delete(foldKey(state, group));
-              else state.folded.add(foldKey(state, group));
-            }
+            const expand = current.every((group) => isFolded(state, group));
+            for (const group of current) setFolded(state, group, !expand);
             view.display();
           });
         }
         const sort = state.toolbar?.parentElement?.querySelector(".bases-toolbar-sort-menu");
         if (state.toolbar && sort && state.toolbar.nextElementSibling !== sort) sort.before(state.toolbar);
-        const action = state.toolbar?.querySelector("button");
-        if (action) {
-          const expand = groups.length > 0 && groups.every((group) => state.folded.has(foldKey(state, group)));
-          const label = expand ? "Expand all groups" : "Collapse all groups";
-          action.disabled = groups.length === 0;
-          if (action.getAttribute("aria-label") !== label) {
-            action.setAttribute("aria-label", label);
-            action.setAttribute("title", label);
-            setIcon(action, expand ? "unfold-vertical" : "fold-vertical");
-          }
-        }
         state.tables = new WeakMap();
         for (let index = 0; index < groups.length; index++) {
           const group = groups[index];
@@ -724,6 +726,7 @@ export const basesGroups: Patch = {
           if (drag?.state === state && drag.target === group) drag.targetTable = table;
           state.tables.set(table.tableEl, target);
           state.tables.set(table.tbodyEl, target);
+          if (state.nativeFolding) continue;
           const heading = table.tableEl.querySelector<HTMLElement>(".bases-group-heading");
           if (!heading) continue;
           const folded = state.folded.has(foldKey(state, group));
@@ -748,6 +751,18 @@ export const basesGroups: Patch = {
             button.dataset["folded"] = String(folded);
             setIcon(button, folded ? "chevron-right" : "chevron-down");
           }
+        }
+      }
+      const action = state.toolbar?.querySelector("button");
+      if (action) {
+        const groups = view.data.groupedData;
+        const expand = groups.length > 0 && groups.every((group) => isFolded(state, group));
+        const label = expand ? "Expand all groups" : "Collapse all groups";
+        action.disabled = groups.length === 0;
+        if (action.getAttribute("aria-label") !== label) {
+          action.setAttribute("aria-label", label);
+          action.setAttribute("title", label);
+          setIcon(action, expand ? "unfold-vertical" : "fold-vertical");
         }
       }
       for (const row of view.rows) {
@@ -779,6 +794,10 @@ export const basesGroups: Patch = {
         controller,
         view,
         hook,
+        nativeFolding:
+          typeof view.isGroupCollapsed === "function" && typeof view.toggleGroupCollapsed === "function"
+            ? (view as NativeFolding)
+            : null,
         folded: new Set(),
         rows: new WeakMap(),
         tables: new WeakMap(),
@@ -798,6 +817,7 @@ export const basesGroups: Patch = {
         true,
       );
       hook.registerDomEvent(controller.viewContainerEl, "click", (evt) => {
+        if (state.nativeFolding) return;
         if (evt.defaultPrevented || evt.button !== 0 || evt.ctrlKey || evt.metaKey || evt.altKey || evt.shiftKey)
           return;
         const node = evt.targetNode;
@@ -855,6 +875,18 @@ export const basesGroups: Patch = {
             return;
           }
           if (drag?.state === state && drag.data !== view.data) cancelDrag();
+          if (state.nativeFolding) {
+            // Native folding owns the data, selection, layout and saved state.
+            rendering = true;
+            try {
+              original.call(view);
+            } finally {
+              rendering = false;
+            }
+            decorate(state, method === "display" || tables !== view.groups);
+            tables = view.groups;
+            return;
+          }
           const data = view.data;
           const groups = data.groupedData;
           const cache = data.groupedDataCache;
@@ -1003,7 +1035,7 @@ export const basesGroups: Patch = {
       // Pin the chosen group while the content moves under a stationary pointer.
       // A deliberate pointer movement resumes normal target selection.
       current.revealAnchor = { x: lastMove.clientX, y: lastMove.clientY };
-      if (state.folded.delete(foldKey(state, target))) state.view.display();
+      if (setFolded(state, target, false)) state.view.display();
       if (!current.targetTable) return;
       let outer: HTMLElement | null = null;
       for (const clip of current.clips) {

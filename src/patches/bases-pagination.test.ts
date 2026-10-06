@@ -148,6 +148,24 @@ describe("Bases pagination", () => {
     expect(base.anchorEl.hasClass("micropatches-bases-paginated")).toBe(true);
   });
 
+  it("uses the toolbar item container in Obsidian 1.14", async () => {
+    const base = fakeBase(app, { getLimit: () => 10, getSort: () => [] }, () => 25);
+    Object.assign(base.resultsMenu, {
+      toolbarItem: { containerEl: base.anchorEl, button: { buttonEl: base.anchorEl.createDiv() } },
+    });
+
+    await render(base);
+    expect(base.anchorEl.nextElementSibling).toBe(base.pager());
+    expect(base.label()).toBe("1 / 3");
+    await click(base.button(1));
+    expect(base.shown[0]).toBe(10);
+    enabled = false;
+    handle.onToggle?.(false);
+    expect(base.pager()).toBeNull();
+    expect(base.anchorEl.hasClass("micropatches-bases-paginated")).toBe(false);
+    expect(base.shown[0]).toBe(0);
+  });
+
   it("starts over when the results, the sort or the limit change", async () => {
     let total = 25;
     let sort: unknown[] = [];
