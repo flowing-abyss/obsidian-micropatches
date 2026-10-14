@@ -15,7 +15,7 @@ Click a patch name for a screenshot or short demo.
 - **Editor**
   - **[Scroll offset](assets/demos/scroll-offset.png)**. Keeps space between the cursor and the edge of the editor.
   - **[Code block language and title](assets/demos/code-block-title.png)**. Lets themes style code blocks by language, title and plain-text state.
-  - **[Copy inline code on click](assets/demos/inline-code-copy.gif)**. Click inline code to copy it. Copying selected text is optional.
+  - **[Copy inline code on click](assets/demos/inline-code-copy.gif)**. Click inline code to copy it. Copying highlighted, bold and italic text is optional.
   - **[Footnotes in the margin](assets/demos/footnote-sidenotes.png)**. Shows editable footnotes beside the note.
 - **Navigation**
   - **[Periodic note breadcrumbs](assets/demos/periodic-breadcrumbs.gif)**. Adds links to the previous and next period. Requires Periodic Notes 1.0.0 or newer.
