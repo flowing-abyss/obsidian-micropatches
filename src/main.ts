@@ -27,6 +27,7 @@ import { noteLocalGraph } from "./patches/note-local-graph";
 import { outlineViewport } from "./patches/outline-viewport";
 import { periodicBreadcrumbs } from "./patches/periodic-breadcrumbs";
 import { scrollOffset } from "./patches/scroll-offset";
+import { searchContext } from "./patches/search-context";
 
 const PATCH_GROUPS: Array<{ name: string; description: string; patches: Patch[] }> = [
   {
@@ -37,7 +38,7 @@ const PATCH_GROUPS: Array<{ name: string; description: string; patches: Patch[] 
   {
     name: "Navigation",
     description: "Links, breadcrumbs, outlines and graphs.",
-    patches: [periodicBreadcrumbs, backlinksDefaults, headingBacklinks, outlineViewport, noteLocalGraph],
+    patches: [periodicBreadcrumbs, backlinksDefaults, searchContext, headingBacklinks, outlineViewport, noteLocalGraph],
   },
   {
     name: "Interface",

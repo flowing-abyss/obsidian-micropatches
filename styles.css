@@ -1,3 +1,178 @@
+.micropatches-search-context {
+  color: var(--text-normal);
+  font: inherit;
+  line-height: 1.45;
+  text-align: start;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  --p-spacing: 0.4em;
+  --heading-spacing: 0.5em;
+  --list-spacing: 0.15em;
+}
+
+/* A virtualized result keeps its measured size until its preview is ready
+   again, even when the raw Markdown would wrap to a different height. */
+.search-result-file-match.micropatches-search-context-placeholder {
+  height: var(--micropatches-search-context-height);
+  overflow: hidden;
+}
+
+.micropatches-search-context-label {
+  display: grid;
+  grid-template-columns: minmax(1.35em, max-content) minmax(0, 1fr);
+  align-items: baseline;
+  padding-block: 2px;
+  color: var(--text-muted);
+}
+
+.micropatches-search-context-marker {
+  color: var(--list-marker-color, var(--text-faint));
+  font-weight: var(--font-normal, 400);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.micropatches-search-context-marker.is-bullet::before {
+  content: "";
+  display: inline-block;
+  width: var(--list-bullet-size, 0.3em);
+  height: var(--list-bullet-size, 0.3em);
+  border-radius: 50%;
+  background-color: currentColor;
+  vertical-align: middle;
+}
+
+.micropatches-search-context-label.is-heading > .micropatches-search-context-marker {
+  font-family: var(--font-interface);
+  font-size: 0.65em;
+  color: var(--text-faint);
+}
+
+.micropatches-search-context-ancestor.is-heading > .micropatches-search-context-label {
+  color: var(--text-normal);
+  font-weight: var(--font-semibold);
+}
+
+.micropatches-search-context .micropatches-search-context-label a {
+  font-weight: inherit;
+}
+
+.micropatches-search-context-tree ul.micropatches-search-context-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.micropatches-search-context-tree .micropatches-search-context-list > li {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.micropatches-search-context .markdown-rendered li {
+  margin-inline-start: 0;
+}
+
+/* Themes can reset Markdown list padding after plugin styles load. Keep the
+   preview's structural indentation scoped above those generic list rules. */
+.micropatches-search-context .micropatches-search-context-tree ul.micropatches-search-context-children {
+  margin-block-start: 2px;
+  padding-inline-start: 12px;
+  border-inline-start: 1px solid var(--indentation-guide-color, var(--background-modifier-border));
+}
+
+.micropatches-search-context a.micropatches-search-context-location {
+  color: inherit;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.micropatches-search-context a.micropatches-search-context-location:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.micropatches-search-context a.micropatches-search-context-location:focus-visible {
+  outline: 2px solid var(--interactive-accent);
+  outline-offset: 2px;
+}
+
+.micropatches-search-context-label p {
+  margin: 0;
+}
+
+.micropatches-search-context-body > :first-child {
+  margin-block-start: 0;
+}
+
+.micropatches-search-context-body > :last-child {
+  margin-block-end: 0;
+}
+
+.micropatches-search-context-body :is(h1, h2, h3, h4, h5, h6) {
+  font-size: 1.05em;
+  line-height: 1.4;
+}
+
+.micropatches-search-context .micropatches-search-context-body.markdown-rendered :is(ul, ol) {
+  padding-inline-start: 1.35em;
+}
+
+.micropatches-search-context .micropatches-search-context-body.markdown-rendered :is(ul, ol).contains-task-list {
+  padding-inline-start: max(1.35em, calc(var(--checkbox-size) + 0.5em));
+}
+
+.micropatches-search-context .markdown-rendered li.task-list-item {
+  position: relative;
+  padding-block-start: var(--list-spacing);
+}
+
+.micropatches-search-context .task-list-item > p {
+  position: relative;
+}
+
+/* Keep the native checkbox in the marker gutter without making the first
+   text line wider or taller. Center its actual box, preserving theme transforms
+   and the checked-state glyph. A loose item's paragraph already follows the
+   item padding; a tight item's checkbox must include that padding itself. */
+.micropatches-search-context .task-list-item > .task-list-item-checkbox,
+.micropatches-search-context .task-list-item > p > .task-list-item-checkbox {
+  position: absolute;
+  font: inherit;
+  inset-inline-start: calc(-1 * (var(--checkbox-size) + 0.5em));
+  inset-block-start: 0.5lh;
+  translate: 0 -50%;
+  margin: 0;
+}
+
+.micropatches-search-context .task-list-item > .task-list-item-checkbox {
+  inset-block-start: calc(var(--list-spacing) + 0.5lh);
+}
+
+.micropatches-search-context-body .callout {
+  margin-block: 0.45em;
+  padding: 8px 12px;
+}
+
+.micropatches-search-context-body :is(pre, table) {
+  max-width: 100%;
+  overflow: auto;
+}
+
+.micropatches-search-context .task-list-item-checkbox {
+  pointer-events: none;
+}
+
+.micropatches-search-context-footnote,
+.micropatches-search-context-source {
+  display: block;
+  width: fit-content;
+  margin-block: 0.25em;
+  color: var(--text-muted);
+  font-size: 0.85em;
+}
+
 body.micropatches-hide-traffic-lights.mod-macos:not(.is-fullscreen) {
   --frame-left-space: 0px;
 }

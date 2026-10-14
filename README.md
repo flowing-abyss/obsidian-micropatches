@@ -20,6 +20,7 @@ Click a patch name for a screenshot or short demo.
 - **Navigation**
   - **[Periodic note breadcrumbs](assets/demos/periodic-breadcrumbs.gif)**. Adds links to the previous and next period. Requires Periodic Notes 1.0.0 or newer.
   - **[Backlinks defaults](assets/demos/backlinks-defaults.png)**. Sets the default display and filters for backlinks.
+  - **[Search context](assets/demos/search-context.gif)**. Shows Markdown with heading and list context in search results and backlinks.
   - **[Heading backlinks](assets/demos/heading-backlinks.png)**. Shows links to each heading. Can also update incoming links when a heading is renamed.
   - **[Outline follows viewport](assets/demos/outline-viewport.gif)**. Keeps the Outline on the section you are reading or editing.
   - **[Local graph in notes](assets/demos/note-local-graph.png)**. Shows a local graph below the title or above backlinks.
