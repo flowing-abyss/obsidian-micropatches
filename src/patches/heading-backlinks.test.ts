@@ -1,7 +1,14 @@
 import { Text } from "@codemirror/state";
-import type { CachedMetadata, HeadingCache, MarkdownPostProcessorContext, PluginManifest, Pos } from "obsidian";
+import type {
+  CachedMetadata,
+  HeadingCache,
+  MarkdownPostProcessorContext,
+  MarkdownRenderChild,
+  PluginManifest,
+  Pos,
+} from "obsidian";
 import type * as Mocks from "obsidian-test-mocks/obsidian";
-import { App, Plugin } from "obsidian-test-mocks/obsidian";
+import { App, MarkdownView, Plugin, WorkspaceLeaf } from "obsidian-test-mocks/obsidian";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PatchContext } from "../patch";
 import {
@@ -336,33 +343,163 @@ describe("reading mode", () => {
 
   class TestPlugin extends Plugin {}
 
-  function register(files: Record<string, string>) {
+  function register(files: Record<string, string>, initiallyEnabled = true) {
+    let enabled = initiallyEnabled;
     const plugin = new TestPlugin(App.createConfigured__({ files }), manifest);
     const ctx: PatchContext = {
-      isEnabled: () => true,
+      isEnabled: () => enabled,
       getConfig: <T>(_key: string, defaultValue: T): T => defaultValue,
       setConfig: () => Promise.resolve(),
     };
-    return { plugin, handle: headingBacklinks.register(plugin.asOriginalType2__(), ctx) };
+    const handle = headingBacklinks.register(plugin.asOriginalType2__(), ctx);
+    return {
+      plugin,
+      handle,
+      toggle: (value: boolean) => {
+        enabled = value;
+        handle.onToggle?.(value);
+      },
+      setEnabled: (value: boolean) => {
+        enabled = value;
+      },
+    };
   }
 
-  async function postProcess(plugin: Plugin, el: HTMLElement, sourcePath: string): Promise<void> {
+  function readingView(plugin: Plugin, path: string) {
+    const view = MarkdownView.create2__(WorkspaceLeaf.create2__(plugin.app));
+    view.file = plugin.app.vault.getFileByPath(path);
+    vi.spyOn(view, "getMode").mockReturnValue("preview");
+    const rerender = vi.spyOn(view.previewMode, "rerender");
+    vi.spyOn(plugin.app.workspace, "getLeavesOfType").mockReturnValue([view.leaf]);
+    view.leaf.view = view.asOriginalType7__();
+    return { view, rerender };
+  }
+
+  async function postProcess(plugin: Plugin, el: HTMLElement, sourcePath: string): Promise<MarkdownRenderChild[]> {
+    const children: MarkdownRenderChild[] = [];
     const context: MarkdownPostProcessorContext = {
       docId: "test",
       sourcePath,
       frontmatter: undefined,
-      addChild: () => undefined,
+      addChild: (child) => {
+        children.push(child);
+        child.load();
+      },
       getSectionInfo: (headingEl) => {
         const line = Number(headingEl.dataset["line"]);
         return { text: "", lineStart: line, lineEnd: line };
       },
     };
     for (const processor of plugin.markdownPostProcessors__) await processor(el, context);
+    return children;
   }
 
   afterEach(() => {
     vi.useRealTimers();
     document.body.empty();
+  });
+
+  it.each(["changed", "deleted", "resolve", "rename"])(
+    "does not refresh reading views on %s while disabled",
+    async (event) => {
+      vi.useFakeTimers();
+      const { plugin, handle } = register({ "a.md": "# Intro" }, false);
+      const { rerender } = readingView(plugin, "a.md");
+      const file = plugin.app.vault.getFileByPath("a.md");
+      const events = event === "rename" ? plugin.app.vault : plugin.app.metadataCache;
+
+      events.trigger(event, file);
+      expect(vi.getTimerCount()).toBe(0);
+      await vi.runAllTimersAsync();
+
+      expect(rerender).not.toHaveBeenCalled();
+      handle.cleanup();
+    },
+  );
+
+  it("ignores a queued refresh while the disable setting is being saved", async () => {
+    vi.useFakeTimers();
+    const { plugin, handle, setEnabled } = register({ "a.md": "# Intro" });
+    const { rerender } = readingView(plugin, "a.md");
+    await vi.runAllTimersAsync();
+    rerender.mockClear();
+
+    plugin.app.metadataCache.trigger("changed", plugin.app.vault.getFileByPath("a.md"));
+    setEnabled(false);
+    await vi.runAllTimersAsync();
+
+    expect(rerender).not.toHaveBeenCalled();
+    handle.cleanup();
+  });
+
+  it("cancels pending refreshes when toggled off and rebuilds when enabled again", async () => {
+    vi.useFakeTimers();
+    const { plugin, handle, toggle } = register({ "a.md": "# Intro", "b.md": "[[a#Intro]]" });
+    const { rerender } = readingView(plugin, "a.md");
+    await vi.runAllTimersAsync();
+
+    plugin.app.metadataCache.trigger("changed", plugin.app.vault.getFileByPath("b.md"));
+    toggle(false);
+    rerender.mockClear();
+    await vi.runAllTimersAsync();
+    expect(rerender).not.toHaveBeenCalled();
+
+    toggle(true);
+    await vi.runAllTimersAsync();
+    const section = document.body.createDiv();
+    section.createEl("h1", { text: "Intro", attr: { "data-line": "0" } });
+    await postProcess(plugin, section, "a.md");
+    expect(section.querySelector("button")?.getAttribute("aria-label")).toBe("1 link to this heading");
+
+    // The pre-disable timer must not cause an extra refresh after a quick off/on cycle.
+    plugin.app.metadataCache.trigger("changed", plugin.app.vault.getFileByPath("b.md"));
+    toggle(false);
+    toggle(true);
+    await vi.advanceTimersByTimeAsync(1);
+    rerender.mockClear();
+    await vi.runAllTimersAsync();
+    expect(rerender).not.toHaveBeenCalled();
+    handle.cleanup();
+  });
+
+  it("updates the backlink count after source edits while enabled", async () => {
+    vi.useFakeTimers();
+    const { plugin, handle } = register({ "a.md": "# Intro", "b.md": "[[a#Intro]]" });
+    const { rerender } = readingView(plugin, "a.md");
+    await vi.runAllTimersAsync();
+    rerender.mockClear();
+
+    const text = "[[a#Intro]] and [[a#Intro]]";
+    plugin.app.metadataCache.setCache__("b.md", {
+      links: [reference(text, "[[a#Intro]]", 0), reference(text, "[[a#Intro]]", text.lastIndexOf("[["))].map(
+        (link) => ({ ...link, link: "a#Intro" }),
+      ),
+    });
+    await vi.runAllTimersAsync();
+    expect(rerender).toHaveBeenCalledExactlyOnceWith(true);
+    const section = document.body.createDiv();
+    section.createEl("h1", { text: "Intro", attr: { "data-line": "0" } });
+    await postProcess(plugin, section, "a.md");
+    expect(section.querySelector("button")?.getAttribute("aria-label")).toBe("2 links to this heading");
+    handle.cleanup();
+  });
+
+  it.each([
+    { pending: "index build", ready: false },
+    { pending: "refresh", ready: true },
+  ])("cancels a pending $pending on cleanup", async ({ ready }) => {
+    vi.useFakeTimers();
+    const { plugin, handle } = register({ "a.md": "# Intro" });
+    const { rerender } = readingView(plugin, "a.md");
+    if (ready) {
+      await vi.runAllTimersAsync();
+      rerender.mockClear();
+      plugin.app.metadataCache.trigger("changed", plugin.app.vault.getFileByPath("a.md"));
+    }
+
+    handle.cleanup();
+    await vi.runAllTimersAsync();
+    expect(rerender).not.toHaveBeenCalled();
   });
 
   it("marks linked headings and lists their sources with context", async () => {
@@ -406,5 +543,54 @@ describe("reading mode", () => {
     handle.cleanup();
     expect(document.querySelector(".micropatches-heading-backlinks-popover")).toBeNull();
     expect(document.querySelector(".micropatches-heading-backlink-indicator")).toBeNull();
+    expect(document.querySelector(".micropatches-heading-has-backlinks")).toBeNull();
+  });
+
+  it.each(["disabled", "unloaded"])("cancels a pending indicator hover when %s", async (action) => {
+    vi.useFakeTimers();
+    const { plugin, handle, toggle } = register({ "a.md": "# Intro", "b.md": "[[a#Intro]]" });
+    await vi.runAllTimersAsync();
+    const section = document.body.createDiv();
+    section.createEl("h1", { text: "Intro", attr: { "data-line": "0" } });
+    await postProcess(plugin, section, "a.md");
+    const button = section.querySelector("button");
+    expect(button).not.toBeNull();
+    button?.dispatchEvent(new Event("pointerenter"));
+
+    if (action === "disabled") toggle(false);
+    else handle.cleanup();
+    expect(vi.getTimerCount()).toBe(0);
+    await vi.runAllTimersAsync();
+
+    expect(document.querySelector(".micropatches-heading-backlinks-popover")).toBeNull();
+    expect(document.querySelector(".micropatches-heading-has-backlinks")).toBeNull();
+    button?.click();
+    expect(document.querySelector(".micropatches-heading-backlinks-popover")).toBeNull();
+    handle.cleanup();
+  });
+
+  it("keeps new indicators when an old reading section unloads after toggling", async () => {
+    vi.useFakeTimers();
+    const { plugin, handle, toggle } = register({ "a.md": "# Intro", "b.md": "[[a#Intro]]" });
+    await vi.runAllTimersAsync();
+    const section = document.body.createDiv();
+    const headingEl = section.createEl("h1", { text: "Intro", attr: { "data-line": "0" } });
+    const oldChildren = await postProcess(plugin, section, "a.md");
+    expect(oldChildren).toHaveLength(1);
+
+    toggle(false);
+    expect(headingEl.querySelector("button")).toBeNull();
+    expect(headingEl.classList.contains("micropatches-heading-has-backlinks")).toBe(false);
+    toggle(true);
+    await vi.runAllTimersAsync();
+    const newChildren = await postProcess(plugin, section, "a.md");
+    for (const child of oldChildren) child.unload();
+    expect(headingEl.querySelectorAll("button")).toHaveLength(1);
+    expect(headingEl.classList.contains("micropatches-heading-has-backlinks")).toBe(true);
+
+    for (const child of newChildren) child.unload();
+    expect(headingEl.querySelector("button")).toBeNull();
+    expect(headingEl.classList.contains("micropatches-heading-has-backlinks")).toBe(false);
+    handle.cleanup();
   });
 });

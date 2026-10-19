@@ -1162,6 +1162,7 @@ export const headingBacklinks: Patch = {
   register(plugin: Plugin, ctx: PatchContext): PatchHandle {
     const resolver = new BacklinkResolver(plugin.app);
     const editorViews = new Set<EditorView>();
+    const readingCleanups = new Set<() => void>();
     const popovers = new Map<Window, BacklinkPopover>();
     const popoverUnloadHandlers = new Map<Window, () => void>();
     const pendingPaths = new Set<string>();
@@ -1268,6 +1269,19 @@ export const headingBacklinks: Patch = {
       for (const popover of popovers.values()) popover.close();
     };
 
+    const clearReadingIndicators = (): void => {
+      for (const cleanup of readingCleanups) cleanup();
+    };
+
+    const cancelRefresh = (): void => {
+      if (invalidateTimer !== null) {
+        window.clearTimeout(invalidateTimer);
+        invalidateTimer = null;
+      }
+      pendingPaths.clear();
+      fullRefreshPending = false;
+    };
+
     const onIndexReady = (): void => {
       if (disposed || !ctx.isEnabled()) return;
       closePopovers();
@@ -1286,14 +1300,14 @@ export const headingBacklinks: Patch = {
 
     const refreshAll = (): void => {
       if (disposed) return;
-      pendingPaths.clear();
-      fullRefreshPending = false;
+      cancelRefresh();
+      // Toggling off still refreshes once to remove existing decorations.
       rebuildIndex();
     };
 
     const flushRefresh = (): void => {
       invalidateTimer = null;
-      if (disposed) return;
+      if (disposed || !ctx.isEnabled()) return;
       if (fullRefreshPending) {
         refreshAll();
         return;
@@ -1312,7 +1326,7 @@ export const headingBacklinks: Patch = {
     };
 
     const ensureRefreshTimer = (restart = false): void => {
-      if (disposed) return;
+      if (disposed || !ctx.isEnabled()) return;
       if (invalidateTimer !== null) {
         if (!restart) return;
         window.clearTimeout(invalidateTimer);
@@ -1323,11 +1337,13 @@ export const headingBacklinks: Patch = {
     };
 
     const scheduleFileRefresh = (file: TFile): void => {
+      if (disposed || !ctx.isEnabled()) return;
       pendingPaths.add(file.path);
       if (!renameBatchActive) ensureRefreshTimer(true);
     };
 
     const scheduleFullRefresh = (): void => {
+      if (disposed || !ctx.isEnabled()) return;
       fullRefreshPending = true;
       if (!renameBatchActive) ensureRefreshTimer(true);
     };
@@ -1920,7 +1936,7 @@ export const headingBacklinks: Patch = {
     plugin.registerEditorExtension([backlinkVersionField, editorExtension]);
 
     plugin.registerMarkdownPostProcessor((el: HTMLElement, mdContext: MarkdownPostProcessorContext) => {
-      if (!ctx.isEnabled()) return;
+      if (disposed || !ctx.isEnabled()) return;
       const file = plugin.app.vault.getFileByPath(mdContext.sourcePath);
       if (file === null) return;
       const cache = plugin.app.metadataCache.getFileCache(file);
@@ -1944,12 +1960,16 @@ export const headingBacklinks: Patch = {
 
       if (controllers.length > 0) {
         const child = new MarkdownRenderChild(el);
-        child.register(() => {
-          for (const controller of controllers) controller.dispose();
-          for (const headingEl of Array.from(el.querySelectorAll<HTMLElement>(`.${LINKED_HEADING_CLASS}`))) {
-            headingEl.classList.remove(LINKED_HEADING_CLASS);
+        const cleanup = (): void => {
+          if (!readingCleanups.delete(cleanup)) return;
+          for (const controller of controllers) {
+            controller.dispose();
+            controller.button.parentElement?.classList.remove(LINKED_HEADING_CLASS);
+            controller.button.remove();
           }
-        });
+        };
+        readingCleanups.add(cleanup);
+        child.register(cleanup);
         mdContext.addChild(child);
       }
     });
@@ -1971,11 +1991,8 @@ export const headingBacklinks: Patch = {
         clearLinkNotices();
         disposed = true;
         resolver.reset();
-        if (invalidateTimer !== null) {
-          window.clearTimeout(invalidateTimer);
-          invalidateTimer = null;
-        }
-        pendingPaths.clear();
+        cancelRefresh();
+        clearReadingIndicators();
         for (const [win, popover] of popovers) {
           popover.close();
           for (const button of Array.from(win.document.querySelectorAll<HTMLElement>(`.${INDICATOR_CLASS}`))) {
@@ -1990,7 +2007,10 @@ export const headingBacklinks: Patch = {
         popoverUnloadHandlers.clear();
       },
       onToggle: (enabled: boolean): void => {
-        if (!enabled) cancelHeadingRenames(true);
+        if (!enabled) {
+          cancelHeadingRenames(true);
+          clearReadingIndicators();
+        }
         refreshAll();
       },
       onConfigChange: (key: string, value: unknown): void => {
