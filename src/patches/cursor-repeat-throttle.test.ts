@@ -1,5 +1,5 @@
 import { EditorState, type Extension } from "@codemirror/state";
-import { EditorView } from "@codemirror/view";
+import { Decoration, EditorView, WidgetType } from "@codemirror/view";
 import type { Plugin as PluginOriginal, PluginManifest } from "obsidian";
 import { App, Plugin } from "obsidian-test-mocks/obsidian";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -66,7 +66,7 @@ describe("getVimMode", () => {
 describe("Cursor repeat throttle", () => {
   const cleanups: Array<() => void> = [];
 
-  function setup(doc = "0123456789") {
+  function setup(doc = "0123456789", extensions: Extension = []) {
     const app = App.createConfigured__();
     const suggest: { currentSuggest: unknown } = { currentSuggest: null };
     Object.assign(app.workspace, { editorSuggest: suggest });
@@ -78,7 +78,7 @@ describe("Cursor repeat throttle", () => {
       setConfig: () => Promise.resolve(),
     });
     const view = new EditorView({
-      state: EditorState.create({ doc, extensions: plugin.editorExtensions__ as Extension[] }),
+      state: EditorState.create({ doc, extensions: [plugin.editorExtensions__ as Extension[], extensions] }),
       parent: document.body,
     });
     // Keydowns the patch passes on. What it takes over is prevented and
@@ -137,6 +137,47 @@ describe("Cursor repeat throttle", () => {
     expect(passedOn).toHaveBeenCalledOnce();
     expect(dispatch).not.toHaveBeenCalled();
   });
+
+  it.each([{ repeat: false }, { repeat: true }, { shiftKey: true }, { shiftKey: true, repeat: true }])(
+    "leaves vertical arrows with %o to a sidenote's textarea",
+    (init) => {
+      const onKeydown = vi.fn((event: KeyboardEvent) => {
+        event.stopPropagation();
+      });
+      class TextareaWidget extends WidgetType {
+        override toDOM(): HTMLElement {
+          const textarea = createEl("textarea");
+          textarea.value = "First line\nSecond line\nThird line";
+          textarea.addEventListener("keydown", onKeydown);
+          return textarea;
+        }
+      }
+      const { view, dispatch, press, head } = setup(
+        "0123456789",
+        EditorView.decorations.of(Decoration.set([Decoration.widget({ widget: new TextareaWidget() }).range(0)])),
+      );
+      const textarea = view.contentDOM.querySelector("textarea");
+      expect(textarea).not.toBeNull();
+      textarea?.focus();
+
+      for (const key of ["ArrowUp", "ArrowDown"]) {
+        const event = new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true, ...init });
+        textarea?.dispatchEvent(event);
+        expect(event.defaultPrevented).toBe(false);
+      }
+      expect(onKeydown).toHaveBeenCalledTimes(2);
+      vi.advanceTimersToNextFrame();
+      expect(dispatch).not.toHaveBeenCalled();
+      expect(head()).toBe(0);
+
+      view.focus();
+      dispatch.mockClear();
+      press("ArrowRight");
+      vi.advanceTimersToNextFrame();
+      expect(dispatch).toHaveBeenCalledOnce();
+      expect(head()).toBe(1);
+    },
+  );
 
   it("applies queued moves before a different key", () => {
     const { press, head } = setup();

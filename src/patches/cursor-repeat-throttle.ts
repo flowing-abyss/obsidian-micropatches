@@ -251,6 +251,9 @@ export const cursorRepeatThrottle: Patch = {
 
     const handleKeydown = (event: KeyboardEvent, view: EditorView): void => {
       if (!ctx.isEnabled()) return;
+      // Capture runs before a widget's own key handler. Nested inputs (such
+      // as a sidenote textarea) must keep their native cursor movement.
+      if (event.target !== view.contentDOM) return;
       const base = MOVE_KEYS[event.key];
       const extendsVertically = event.shiftKey && base?.type === "line";
       if (
