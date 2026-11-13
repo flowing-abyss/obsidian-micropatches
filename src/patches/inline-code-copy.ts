@@ -1,6 +1,6 @@
 import { ensureSyntaxTree, syntaxTree } from "@codemirror/language";
 import { EditorView } from "@codemirror/view";
-import { sanitizeHTMLToDom, type Plugin, type SettingGroupItem } from "obsidian";
+import { htmlToMarkdown, sanitizeHTMLToDom, type Plugin, type SettingGroupItem } from "obsidian";
 import type { Patch, PatchContext, PatchHandle } from "../patch";
 
 const INLINE_CODE_BODY_CLASS = "micropatches-inline-code-copy";
@@ -13,13 +13,14 @@ const MAX_FEEDBACK_ELEMENTS = 64;
 const COPY_HIGHLIGHTS_KEY = "copyHighlights";
 const COPY_BOLD_KEY = "copyBold";
 const COPY_ITALIC_KEY = "copyItalic";
+const PRESERVE_FORMATTING_KEY = "preserveFormatting";
 const READING_CODE_SELECTOR = ".markdown-rendered :not(pre) > code";
 const EDITOR_CODE_SELECTOR = ".markdown-source-view.mod-cm6 .cm-inline-code";
 const EDITOR_CONTENT_SELECTOR = ".cm-inline-code:not(.cm-formatting-code)";
 const EDITOR_FORMAT_SELECTOR = ".markdown-source-view.mod-cm6 :is(.cm-highlight, .cm-strong, .cm-em)";
 const INTERACTIVE_SELECTOR = "a, button, input, textarea, select, .cm-link, .cm-hmd-internal-link, .cm-url";
 
-type Format = "highlight" | "strong" | "em";
+type Format = "highlight" | "strong" | "em" | "inline-code";
 
 const FORMATS: Array<{ format: Format; key: string; tag: string; bodyClass: string }> = [
   { format: "highlight", key: COPY_HIGHLIGHTS_KEY, tag: "mark", bodyClass: HIGHLIGHT_BODY_CLASS },
@@ -76,12 +77,55 @@ function adjacentElement(from: Element, direction: "previous" | "next"): Element
   return node?.nodeType === Node.ELEMENT_NODE ? (node as Element) : null;
 }
 
-export function inlineCodeTarget(target: Element): CopyTarget | null {
-  const readingCode = target.closest(READING_CODE_SELECTOR);
-  if (readingCode !== null) return { text: readingCode.textContent, elements: [readingCode] };
+function codeMarkdown(text: string): string {
+  if (text === "") return "";
+  let width = 1;
+  for (const match of text.matchAll(/`+/g)) width = Math.max(width, match[0].length + 1);
+  const marker = "`".repeat(width);
+  const padding =
+    text.startsWith("`") || text.endsWith("`") || (text.startsWith(" ") && text.endsWith(" ") && /\S/.test(text));
+  return padding ? `${marker} ${text} ${marker}` : `${marker}${text}${marker}`;
+}
 
-  const segment = target.closest(EDITOR_CODE_SELECTOR);
+function readingMarkdown(element: Element): string {
+  // Obsidian's converter trims spaces inside code. Protect those fragments
+  // while letting its Markdown rules handle the surrounding rendered HTML.
+  const clone = element.cloneNode(true) as Element;
+  let prefix = "MICROPATCHESCOPY";
+  while (clone.outerHTML.includes(prefix)) prefix += "X";
+  const replacements: string[] = [];
+  const protect = (text: string): string => {
+    const placeholder = `${prefix}${replacements.length}END`;
+    replacements.push(text);
+    return placeholder;
+  };
+  for (const el of clone.querySelectorAll("code")) {
+    el.replaceWith(el.ownerDocument.createTextNode(protect(codeMarkdown(el.textContent))));
+  }
+  // Rendered literal markers must not become new formatting on paste.
+  // Placeholders also avoid depending on the converter's escaping rules.
+  const walker = clone.ownerDocument.createTreeWalker(clone, NodeFilter.SHOW_TEXT);
+  let node: Node | null;
+  while ((node = walker.nextNode()) !== null) {
+    node.textContent = (node.textContent ?? "").replace(/[\\`*_[\]~=<>]/g, (marker) => protect(`\\${marker}`));
+  }
+  return htmlToMarkdown(clone.outerHTML).replace(
+    new RegExp(`${prefix}(\\d+)END`, "g"),
+    (_placeholder, index: string) => replacements[Number(index)] ?? "",
+  );
+}
+
+export function inlineCodeTarget(target: Element, preserveFormatting = false, event?: MouseEvent): CopyTarget | null {
+  const readingCode = target.closest(READING_CODE_SELECTOR);
+  if (readingCode !== null)
+    return {
+      text: preserveFormatting ? codeMarkdown(readingCode.textContent) : readingCode.textContent,
+      elements: [readingCode],
+    };
+
+  const segment = target.closest<HTMLElement>(EDITOR_CODE_SELECTOR);
   if (segment === null) return null;
+  if (preserveFormatting) return editorTarget(segment, ["inline-code"], event, true);
 
   // With the cursor inside inline code, CodeMirror exposes each backtick as
   // its own formatting span. Clicking either marker should still copy the
@@ -111,7 +155,7 @@ function isBoundary(node: FormatToken, format: Format): boolean {
   const tags = node.name.split("_");
   // HyperMD represents *** and ___ as a strong marker with two em tags.
   return (
-    tags.includes(`formatting-${format}`) ||
+    tags.includes(`formatting-${format === "inline-code" ? "code" : format}`) ||
     (format === "em" && tags.includes("formatting-strong") && tags.filter((tag) => tag === "em").length === 2)
   );
 }
@@ -191,6 +235,7 @@ export function formattedTextRange(
   format: Format,
   position = node.from,
   deadline = Infinity,
+  preserveFormatting = false,
 ): TextRange | null {
   if (!hasFormat(node, format)) return null;
   const isPart = (part: FormatToken | null): part is FormatToken =>
@@ -200,8 +245,14 @@ export function formattedTextRange(
   const gap = (left: FormatToken, right: FormatToken): string => source.sliceString(left.to, right.from);
   const connected = (left: FormatToken, right: FormatToken): boolean => /^\n?$/.test(gap(left, right));
   const textOf = (part: FormatToken): string => {
-    if (!isContent(part)) return "";
     const text = source.sliceString(part.from, part.to);
+    if (preserveFormatting) {
+      // Continuation prefixes belong to the containing list or quote, not
+      // to the inline fragment being copied.
+      const tags = part.name.split("_");
+      return tags.includes("hmd-list-indent") || tags.includes("formatting-quote") ? "" : text;
+    }
+    if (!isContent(part)) return "";
     return part.html === true ? sanitizeHTMLToDom(text).textContent : text;
   };
 
@@ -223,12 +274,12 @@ export function formattedTextRange(
   if (!isPart(content)) return null;
 
   let first = content;
-  let opened = false;
+  let opening: FormatToken | null = null;
   let steps = 0;
   for (;;) {
     const previous = adjacentPart(first, "previous", format, deadline);
     if (!isPart(previous) || !connected(previous, first)) {
-      opened = previous !== null && isBoundary(previous, format) && connected(previous, first);
+      if (previous !== null && isBoundary(previous, format) && connected(previous, first)) opening = previous;
       break;
     }
     if (++steps % 64 === 0 && performance.now() > deadline) return null;
@@ -236,12 +287,12 @@ export function formattedTextRange(
   }
 
   let last = first;
-  let closed = false;
+  let closing: FormatToken | null = null;
   let text = textOf(first);
   for (;;) {
     const next = adjacentPart(last, "next", format, deadline);
     if (!isPart(next) || !connected(last, next)) {
-      closed = next !== null && isBoundary(next, format) && connected(last, next);
+      if (next !== null && isBoundary(next, format) && connected(last, next)) closing = next;
       break;
     }
     if (++steps % 64 === 0 && performance.now() > deadline) return null;
@@ -249,19 +300,55 @@ export function formattedTextRange(
     text += textOf(next);
     last = next;
   }
-  return { from: first.from, to: last.to, text, complete: opened && closed };
+  if (preserveFormatting && opening !== null && closing !== null) {
+    // A shared boundary can close one run and open another, such as **__.
+    let start =
+      source
+        .sliceString(opening.from, opening.to)
+        .match(/\*+|_+|=+|`+/g)
+        ?.slice(-1)[0] ?? "";
+    let end = /^(?:\*+|_+|=+|`+)/.exec(source.sliceString(closing.from, closing.to))?.[0] ?? "";
+    // A closing *** can also close emphasis inherited from outside this
+    // fragment. Keep only the delimiters belonging to the copied fragment.
+    for (const [emphasis, width] of [
+      ["em", 1],
+      ["strong", 2],
+    ] as const) {
+      if (hasFormat(last, emphasis) && !isBoundary(closing, emphasis) && isBoundary(opening, emphasis))
+        start = start.slice(0, Math.max(0, start.length - width));
+      if (hasFormat(first, emphasis) && !isBoundary(opening, emphasis) && isBoundary(closing, emphasis))
+        end = end.slice(0, Math.max(0, end.length - width));
+    }
+    text = start + text + end;
+  }
+  return { from: first.from, to: last.to, text, complete: opening !== null && closing !== null };
 }
 
-export function formattedTarget(target: Element, formats: readonly Format[], event?: MouseEvent): CopyTarget | null {
+export function formattedTarget(
+  target: Element,
+  formats: readonly Format[],
+  event?: MouseEvent,
+  preserveFormatting = false,
+): CopyTarget | null {
   if (formats.length === 0 || target.closest("pre") !== null) return null;
   const selector = FORMATS.filter(({ format }) => formats.includes(format))
     .map(({ tag }) => `.markdown-rendered ${tag}`)
     .join(", ");
   const reading = target.closest(selector);
-  if (reading !== null) return { text: reading.textContent, elements: [reading] };
+  if (reading !== null)
+    return { text: preserveFormatting ? readingMarkdown(reading) : reading.textContent, elements: [reading] };
 
   const segment = target.closest<HTMLElement>(EDITOR_FORMAT_SELECTOR);
   if (segment === null || !formats.some((format) => segment.classList.contains(`cm-${format}`))) return null;
+  return editorTarget(segment, formats, event, preserveFormatting);
+}
+
+function editorTarget(
+  segment: HTMLElement,
+  formats: readonly Format[],
+  event: MouseEvent | undefined,
+  preserveFormatting: boolean,
+): CopyTarget | null {
   const view = EditorView.findFromDOM(segment);
   if (view === null) return null;
   const start = view.posAtDOM(segment);
@@ -278,7 +365,7 @@ export function formattedTarget(target: Element, formats: readonly Format[], eve
     const node = tree.resolveInner(position, 1);
     range = null;
     for (const format of formats) {
-      const candidate = formattedTextRange(node, view.state.doc, format, position, deadline);
+      const candidate = formattedTextRange(node, view.state.doc, format, position, deadline, preserveFormatting);
       if (candidate !== null && (range === null || candidate.to - candidate.from < range.to - range.from))
         range = candidate;
     }
@@ -316,7 +403,7 @@ export function formattedTarget(target: Element, formats: readonly Format[], eve
       lookups++;
       const dom = view.domAtPos(cursor.from).node;
       const el = (dom.nodeType === Node.ELEMENT_NODE ? (dom as Element) : dom.parentElement)?.closest(
-        EDITOR_FORMAT_SELECTOR,
+        `${EDITOR_FORMAT_SELECTOR}, ${EDITOR_CODE_SELECTOR}`,
       );
       if (el !== undefined && el !== null) elements.add(el);
     } while (cursor.next());
@@ -342,6 +429,7 @@ export const inlineCodeCopy: Patch = {
     const windows = new Map<Window, WindowState>();
     const feedbackTimers = new Map<Element, FeedbackTimer>();
     let formats = FORMATS.filter(({ key }) => ctx.getConfig<boolean>(key, false));
+    let preserveFormatting = ctx.getConfig<boolean>(PRESERVE_FORMATTING_KEY, false);
     let generation = 0;
 
     const showCopyFeedback = (win: Window, elements: Element[]): void => {
@@ -402,11 +490,12 @@ export const inlineCodeCopy: Patch = {
         if (target.closest(INTERACTIVE_SELECTOR) !== null) return;
 
         const copyTarget =
-          inlineCodeTarget(target) ??
+          inlineCodeTarget(target, preserveFormatting, event) ??
           formattedTarget(
             target,
             formats.map(({ format }) => format),
             event,
+            preserveFormatting,
           );
         if (copyTarget === null || copyTarget.text === "") return;
         const copyGeneration = generation;
@@ -476,9 +565,10 @@ export const inlineCodeCopy: Patch = {
         applyAll();
       },
       onConfigChange: (key: string): void => {
-        if (!FORMATS.some((format) => format.key === key)) return;
+        if (key !== PRESERVE_FORMATTING_KEY && !FORMATS.some((format) => format.key === key)) return;
         generation++;
         formats = FORMATS.filter(({ key: configKey }) => ctx.getConfig<boolean>(configKey, false));
+        preserveFormatting = ctx.getConfig<boolean>(PRESERVE_FORMATTING_KEY, false);
         for (const win of windows.keys()) clearCopyFeedback(win);
         applyAll();
       },
@@ -487,6 +577,11 @@ export const inlineCodeCopy: Patch = {
 
   settingDefinitions(_ctx: PatchContext, key: (configKey: string) => string): SettingGroupItem[] {
     return [
+      {
+        name: "Preserve Markdown formatting",
+        desc: "Keeps Markdown formatting when copying code, highlighted, bold or italic text. Off by default.",
+        control: { type: "toggle", key: key(PRESERVE_FORMATTING_KEY), defaultValue: false },
+      },
       {
         name: "Copy highlighted text",
         desc: "Also copies ==highlighted text== on click. Off by default.",

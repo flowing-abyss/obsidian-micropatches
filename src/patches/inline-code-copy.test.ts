@@ -1,7 +1,13 @@
+import * as obsidian from "obsidian";
 import { App, Plugin } from "obsidian-test-mocks/obsidian";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PatchHandle } from "../patch";
 import { formattedTarget, formattedTextRange, inlineCodeCopy, inlineCodeTarget } from "./inline-code-copy";
+
+vi.mock("obsidian", async (importOriginal) => {
+  const original = await importOriginal<typeof obsidian>();
+  return { ...original, htmlToMarkdown: vi.fn(original.htmlToMarkdown) };
+});
 
 const TICK = "cm-formatting cm-formatting-code cm-inline-code";
 const CODE = "cm-inline-code";
@@ -102,7 +108,7 @@ function tokens(...parts: Array<string | [string, string]>) {
   }
   return {
     nodes,
-    at(index: number, format: Parameters<typeof formattedTextRange>[2], offset = 0) {
+    at(index: number, format: Parameters<typeof formattedTextRange>[2], offset = 0, preserveFormatting = false) {
       const node = nodes[index];
       if (node === undefined) throw new Error("Missing fixture token");
       return formattedTextRange(
@@ -110,6 +116,8 @@ function tokens(...parts: Array<string | [string, string]>) {
         { sliceString: (from, to) => source.slice(from, to) },
         format,
         node.from + offset,
+        Infinity,
+        preserveFormatting,
       );
     },
   };
@@ -355,7 +363,7 @@ describe("formatted text", () => {
 
 describe("click to copy", () => {
   class TestPlugin extends Plugin {}
-  let state = { enabled: true, copyHighlights: false, copyBold: false, copyItalic: false };
+  let state = { preserveFormatting: false, enabled: true, copyHighlights: false, copyBold: false, copyItalic: false };
   let writeText = vi.fn();
   let handles: PatchHandle[] = [];
 
@@ -387,7 +395,7 @@ describe("click to copy", () => {
 
   beforeEach(() => {
     vi.useFakeTimers();
-    state = { enabled: true, copyHighlights: false, copyBold: false, copyItalic: false };
+    state = { preserveFormatting: false, enabled: true, copyHighlights: false, copyBold: false, copyItalic: false };
     writeText = vi.fn(() => Promise.resolve());
     vi.stubGlobal("navigator", { clipboard: { writeText } });
   });
@@ -410,7 +418,7 @@ describe("click to copy", () => {
     expect(spans.some((span) => span.hasClass(FLASH))).toBe(false);
   });
 
-  it("declares both new settings with disabled defaults", () => {
+  it("declares optional copying and preservation with disabled defaults", () => {
     const settings = inlineCodeCopy.settingDefinitions?.(
       {
         isEnabled: () => true,
@@ -422,10 +430,45 @@ describe("click to copy", () => {
     );
     expect(settings).toEqual(
       expect.arrayContaining([
+        expect.objectContaining({ control: { type: "toggle", key: "preserveFormatting", defaultValue: false } }),
         expect.objectContaining({ control: { type: "toggle", key: "copyBold", defaultValue: false } }),
         expect.objectContaining({ control: { type: "toggle", key: "copyItalic", defaultValue: false } }),
       ]),
     );
+  });
+
+  it("changes the clipboard format immediately and keeps format opt ins independent", async () => {
+    state.copyBold = true;
+    const handle = register();
+    const bold = reading().createEl("strong", { text: "Important" });
+    const code = reading().createEl("code", { text: "a`b" });
+    await click(bold);
+    expect(writeText).toHaveBeenLastCalledWith("Important");
+
+    state.preserveFormatting = true;
+    handle.onConfigChange?.("preserveFormatting", true);
+    await click(bold);
+    expect(writeText).toHaveBeenLastCalledWith("**Important**");
+    await click(code);
+    expect(writeText).toHaveBeenLastCalledWith("``a`b``");
+    const calls = writeText.mock.calls.length;
+    await click(reading().createEl("em", { text: "Disabled" }));
+    expect(writeText).toHaveBeenCalledTimes(calls);
+
+    state.preserveFormatting = false;
+    handle.onConfigChange?.("preserveFormatting", false);
+    await click(code);
+    expect(writeText).toHaveBeenLastCalledWith("a`b");
+    handle.cleanup();
+    await click(bold);
+    expect(writeText).toHaveBeenCalledTimes(calls + 1);
+  });
+
+  it("keeps code priority when preserving nested formatting", async () => {
+    state.preserveFormatting = state.copyBold = true;
+    register();
+    await click(reading().createEl("strong").createEl("code", { text: "npm i" }));
+    expect(writeText).toHaveBeenCalledExactlyOnceWith("`npm i`");
   });
 
   it("ignores other buttons and clicks outside inline code", async () => {
@@ -533,7 +576,7 @@ describe("click to copy", () => {
     expect(writeText).not.toHaveBeenCalled();
   });
 
-  it.each(["toggle", "config", "cleanup"] as const)(
+  it.each(["toggle", "config", "format", "cleanup"] as const)(
     "does not restore feedback after %s while clipboard writing is pending",
     async (action) => {
       state.copyBold = true;
@@ -550,6 +593,9 @@ describe("click to copy", () => {
       else if (action === "toggle") {
         state.enabled = false;
         handle.onToggle?.(false);
+      } else if (action === "format") {
+        state.preserveFormatting = true;
+        handle.onConfigChange?.("preserveFormatting", true);
       } else {
         state.copyBold = false;
         handle.onConfigChange?.("copyBold", false);
@@ -563,7 +609,7 @@ describe("click to copy", () => {
 
   it("uses each popout's clipboard and cleans it up on close", async () => {
     const app = App.createConfigured__();
-    state.copyBold = true;
+    state.copyBold = state.preserveFormatting = true;
     const handle = register(app);
     const win = document.body.createEl("iframe").contentWindow;
     if (win === null) throw new Error("Missing iframe window");
@@ -575,7 +621,7 @@ describe("click to copy", () => {
     app.workspace.trigger("window-open", {}, win);
     expect(win.document.body.classList.contains("micropatches-bold-copy")).toBe(true);
     await click(bold);
-    expect(popoutWrite).toHaveBeenCalledExactlyOnceWith("Popout");
+    expect(popoutWrite).toHaveBeenCalledExactlyOnceWith("**Popout**");
     expect(writeText).not.toHaveBeenCalled();
     app.workspace.trigger("window-close", {}, win);
     expect(win.document.body.classList.contains("micropatches-bold-copy")).toBe(false);
@@ -607,5 +653,132 @@ describe("click to copy", () => {
     expect(writeText).toHaveBeenCalledOnce();
     expect(code.hasClass(FLASH)).toBe(false);
     expect(bodyClasses()).toEqual([]);
+  });
+});
+
+describe("preserving Markdown", () => {
+  it.each([
+    ["strong", "**"],
+    ["strong", "__"],
+    ["em", "*"],
+    ["em", "_"],
+    ["highlight", "=="],
+    ["inline-code", "``"],
+  ] as const)("keeps the source delimiters for %s with %s", (format, marker) => {
+    const boundary = `formatting_formatting-${format === "inline-code" ? "code" : format}_${format}`;
+    const fixture = tokens([boundary, marker], [format, "text"], [boundary, marker]);
+    for (const index of [0, 1, 2])
+      expect(fixture.at(index, format, 0, true)).toMatchObject({ text: `${marker}text${marker}`, complete: true });
+  });
+
+  it.each(["***", "___"])("preserves combined emphasis with %s", (marker) => {
+    const boundary = "em_em_formatting_formatting-strong_strong";
+    const fixture = tokens([boundary, marker], ["em_strong", "both"], [boundary, marker]);
+    for (const format of ["em", "strong"] as const)
+      expect(fixture.at(1, format, 0, true)?.text).toBe(`${marker}both${marker}`);
+  });
+
+  it("splits shared delimiters without copying the neighbouring run", () => {
+    const boundary = "formatting_formatting-strong_strong";
+    const fixture = tokens(
+      [boundary, "**"],
+      ["strong", "one"],
+      [boundary, "**__"],
+      ["strong", "two"],
+      [boundary, "__"],
+    );
+    expect(fixture.at(1, "strong", 0, true)?.text).toBe("**one**");
+    expect(fixture.at(3, "strong", 0, true)?.text).toBe("__two__");
+    expect(fixture.at(2, "strong", 0, true)?.text).toBe("**one**");
+    expect(fixture.at(2, "strong", 2, true)?.text).toBe("__two__");
+  });
+
+  it("retains nested Markdown, links, escapes and inline HTML", () => {
+    const boundary = "formatting_formatting-strong_strong";
+    const fixture = tokens(
+      [boundary, "**"],
+      ["strong", "Read "],
+      ["formatting_formatting-link_strong", "["],
+      ["link_strong", "label"],
+      ["formatting_formatting-link_strong", "]("],
+      ["string_url_strong", "https://example.com"],
+      ["formatting_formatting-link_strong", ")"],
+      ["strong", " "],
+      ["formatting_escape_strong", "\\"],
+      ["strong", "* "],
+      ["bracket_hmd-html-begin_tag", "<"],
+      ["tag", "u"],
+      ["bracket_tag", ">"],
+      "HTML",
+      ["bracket_tag", "</"],
+      ["tag", "u"],
+      ["bracket_hmd-html-end_tag", ">"],
+      ["strong", " end"],
+      [boundary, "**"],
+    );
+    expect(fixture.at(1, "strong", 0, true)?.text).toBe("**Read [label](https://example.com) \\* <u>HTML</u> end**");
+  });
+
+  it.each([
+    ["hmd-list-indent_hmd-list-indent-1", "  "],
+    ["formatting_formatting-quote_quote_strong", "> "],
+  ])("omits the containing block's continuation prefix %s", (name, prefix) => {
+    const boundary = "formatting_formatting-strong_strong";
+    const fixture = tokens(
+      [boundary, "**"],
+      ["strong", "first"],
+      "\n",
+      [name, prefix],
+      ["strong", "second"],
+      [boundary, "**"],
+    );
+    expect(fixture.at(1, "strong", 0, true)?.text).toBe("**first\nsecond**");
+  });
+
+  it("converts rendered nested formatting without changing the DOM", () => {
+    const bold = reading().createEl("strong");
+    bold.append("outer ");
+    const italic = bold.createEl("em");
+    italic.textContent = "Inner";
+    bold.append(" tail");
+    const before = bold.outerHTML;
+    expect(formattedTarget(bold, ["strong"], undefined, true)?.text).toBe("**outer _Inner_ tail**");
+    expect(formattedTarget(italic, ["strong", "em"], undefined, true)?.text).toBe("_Inner_");
+    expect(bold.outerHTML).toBe(before);
+  });
+
+  it("preserves spaces and literal Markdown inside nested code", () => {
+    const bold = reading().createEl("strong");
+    bold.append("MICROPATCHESCOPY ");
+    bold.createEl("code").textContent = " *X* ";
+    const before = bold.outerHTML;
+    expect(formattedTarget(bold, ["strong"], undefined, true)?.text).toBe("**MICROPATCHESCOPY `  *X*  `**");
+    expect(bold.outerHTML).toBe(before);
+  });
+
+  it("escapes literal Markdown markers inside rendered formatting", () => {
+    const bold = reading().createEl("strong", { text: "Literal *stars* and [brackets]" });
+    expect(formattedTarget(bold, ["strong"], undefined, true)?.text).toBe("**Literal \\*stars\\* and \\[brackets\\]**");
+  });
+
+  it("passes the complete highlighted fragment to Obsidian's Markdown converter", () => {
+    // The mock uses plain Turndown, which lacks Obsidian's highlight rule.
+    // This conversion result was captured from the running dev vault.
+    const convert = vi.mocked(obsidian.htmlToMarkdown).mockReturnValueOnce("==a **B**==");
+    const mark = reading().createEl("mark");
+    mark.append("a ");
+    mark.createEl("strong").textContent = "B";
+    expect(formattedTarget(mark, ["highlight"], undefined, true)?.text).toBe("==a **B**==");
+    expect(convert).toHaveBeenCalledExactlyOnceWith("<mark>a <strong>B</strong></mark>");
+  });
+
+  it.each([
+    ["a`b", "``a`b``"],
+    ["`a`", "`` `a` ``"],
+    ["a``b", "```a``b```"],
+    [" a ", "`  a  `"],
+  ])("preserves rendered inline code containing %s", (text, markdown) => {
+    const code = reading().createEl("code", { text });
+    expect(inlineCodeTarget(code, true)?.text).toBe(markdown);
   });
 });

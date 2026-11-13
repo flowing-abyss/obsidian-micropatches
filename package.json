@@ -1,6 +1,6 @@
 {
   "name": "micropatches",
-  "version": "1.11.3",
+  "version": "1.11.4",
   "description": "Small, targeted fixes and quality of life tweaks.",
   "main": "main.js",
   "type": "module",
