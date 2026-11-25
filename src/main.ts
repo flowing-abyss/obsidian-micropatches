@@ -28,12 +28,13 @@ import { outlineViewport } from "./patches/outline-viewport";
 import { periodicBreadcrumbs } from "./patches/periodic-breadcrumbs";
 import { scrollOffset } from "./patches/scroll-offset";
 import { searchContext } from "./patches/search-context";
+import { mediaEmbedDimensions } from "./patches/media-embed-dimensions";
 
 const PATCH_GROUPS: Array<{ name: string; description: string; patches: Patch[] }> = [
   {
     name: "Editor",
-    description: "Writing, code blocks and footnotes.",
-    patches: [scrollOffset, codeBlockTitle, inlineCodeCopy, footnoteSidenotes],
+    description: "Writing, code blocks, footnotes and embeds.",
+    patches: [scrollOffset, codeBlockTitle, inlineCodeCopy, footnoteSidenotes, mediaEmbedDimensions],
   },
   {
     name: "Navigation",
