@@ -965,3 +965,12 @@ body:not(.is-phone) .micropatches-bases-column-search .bases-toolbar-items .sugg
   height: 2px;
   background: var(--interactive-accent);
 }
+.micropatches-media-embed-dimensions .internal-embed.media-embed.video-embed {
+  --micropatches-media-embed-width: attr(width px);
+  --micropatches-media-embed-height: attr(height px);
+}
+
+.micropatches-media-embed-dimensions .internal-embed.media-embed.video-embed > video {
+  width: var(--micropatches-media-embed-width, auto);
+  height: var(--micropatches-media-embed-height, auto);
+}
